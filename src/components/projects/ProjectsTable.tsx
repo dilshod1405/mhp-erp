@@ -10,14 +10,10 @@ import { Button } from "@/components/ui/button"
 import { Pencil, Trash2, ExternalLink } from "lucide-react"
 import { PROJECT_TYPE_DISPLAY_NAMES, type ProjectType } from "@/config/project-types"
 import type { Project } from "@/types/project"
-import type { Developer } from "@/types/developer"
-import type { Area } from "@/types/area"
 
 interface ProjectsTableProps {
   projects: Project[]
   projectType: ProjectType
-  developers: Developer[]
-  areas: Area[]
   canEdit: boolean
   deletingProjectId: number | null
   onEdit: (project: Project) => void
@@ -30,8 +26,6 @@ interface ProjectsTableProps {
 export function ProjectsTable({
   projects,
   projectType,
-  developers,
-  areas,
   canEdit,
   deletingProjectId,
   onEdit,

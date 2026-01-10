@@ -418,7 +418,7 @@ export default function AreasPage() {
                         <TableCell>{area.title}</TableCell>
                         <TableCell>{area.city}</TableCell>
                         <TableCell>
-                          {new Date(area.created_at).toISOString().split('T')[0]}
+                          {area.created_at ? new Date(area.created_at).toISOString().split('T')[0] : '-'}
                         </TableCell>
                         {canEdit && (
                           <TableCell className="text-right">

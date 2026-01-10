@@ -752,8 +752,6 @@ export default function ProjectsPage() {
               <ProjectsTable
                 projects={projects}
                 projectType={projectType}
-                developers={developers}
-                areas={areas}
                 canEdit={canEdit}
                 deletingProjectId={deletingProjectId}
                 onEdit={handleEdit}
