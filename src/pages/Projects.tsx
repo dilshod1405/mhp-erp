@@ -21,6 +21,7 @@ import { ProjectsFilters } from "@/components/projects/ProjectsFilters"
 import { SearchBar } from "@/components/shared/SearchBar"
 import { TableSkeleton } from "@/components/shared/TableSkeleton"
 import { Pagination } from "@/components/shared/Pagination"
+import { formatError } from "@/lib/error-formatter"
 import { useAuth } from "@/contexts/AuthContext"
 import { canEditProjects } from "@/config/roles"
 import { 
@@ -151,7 +152,7 @@ export default function ProjectsPage() {
       setProjects(response.data || [])
     } catch (err: unknown) {
       console.error("Error fetching projects:", err)
-      const message = err instanceof Error ? err.message : "Failed to fetch projects"
+      const message = formatError(err) || "Failed to fetch projects"
       setError(message)
     } finally {
       setLoading(false)
@@ -375,7 +376,7 @@ export default function ProjectsPage() {
       )
     } catch (err: unknown) {
       console.error("Error deleting project:", err)
-      const message = err instanceof Error ? err.message : "Failed to delete project"
+      const message = formatError(err) || "Failed to delete project"
       setError(message)
     } finally {
       setDeletingProjectId(null)
@@ -618,7 +619,7 @@ export default function ProjectsPage() {
       )
     } catch (err: unknown) {
       console.error("Error saving project:", err)
-      const message = err instanceof Error ? err.message : "Failed to save project"
+      const message = formatError(err) || "Failed to save project"
       setError(message)
     } finally {
       setIsSaving(false)

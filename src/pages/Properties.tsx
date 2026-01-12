@@ -58,6 +58,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { canEditProperties } from "@/config/roles"
 import ArchivePage from "./Archive"
 import { TableSkeleton } from "@/components/shared/TableSkeleton"
+import { formatError } from "@/lib/error-formatter"
 
 import type { Property, PropertyListingType } from "@/types/property"
 import type { ProjectBasic } from "@/types/project"
@@ -194,7 +195,7 @@ export default function PropertiesPage() {
       setProperties(response.data || [])
     } catch (err: unknown) {
       console.error("Error fetching properties:", err)
-      const message = err instanceof Error ? err.message : "Failed to fetch properties"
+      const message = formatError(err) || "Failed to fetch properties"
       setError(message)
     } finally {
       setLoading(false)
@@ -426,7 +427,7 @@ export default function PropertiesPage() {
       })
     } catch (err: unknown) {
       console.error("Error saving property:", err)
-      const message = err instanceof Error ? err.message : "Failed to save property"
+      const message = formatError(err) || "Failed to save property"
       setError(message)
     } finally {
       setIsSaving(false)
@@ -457,7 +458,7 @@ export default function PropertiesPage() {
       fetchProperties(searchQuery || undefined, currentPage)
     } catch (err: unknown) {
       console.error("Error deleting property:", err)
-      const message = err instanceof Error ? err.message : "Failed to delete property"
+      const message = formatError(err) || "Failed to delete property"
       setError(message)
       alert(message)
     } finally {

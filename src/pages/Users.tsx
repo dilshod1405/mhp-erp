@@ -39,6 +39,7 @@ import type { Employee } from "@/types/auth"
 import { uploadAvatar } from "@/lib/storage"
 import { supabase } from "@/lib/supabase"
 import { TableSkeleton } from "@/components/shared/TableSkeleton"
+import { formatError } from "@/lib/error-formatter"
 import { 
   canEditEmployees, 
   canViewEmployees, 
@@ -161,7 +162,7 @@ export default function UsersPage() {
       
       setUsers(usersWithNullRole)
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to fetch users"
+      const errorMessage = formatError(err) || "Failed to fetch users"
       setError(errorMessage)
       console.error("Error fetching users:", err)
     } finally {
@@ -266,7 +267,7 @@ export default function UsersPage() {
 
       await fetchUsers(searchQuery, currentPage)
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to delete user"
+      const errorMessage = formatError(err) || "Failed to delete user"
       setError(errorMessage)
       console.error("Error deleting user:", err)
     } finally {
@@ -411,23 +412,7 @@ export default function UsersPage() {
           }
         )
       } catch (error: any) {
-        const errorText = error.response?.data || error.message
-        let errorMessage = `Failed to update user: ${error.response?.statusText || error.message}`
-        
-        const errorData = typeof errorText === 'string' ? (() => {
-          try { return JSON.parse(errorText) } catch { return { message: errorText } }
-        })() : errorText
-        
-        errorMessage = errorData.message || errorData.error || errorMessage
-        
-        // Check for duplicate email constraint error (only if email is provided)
-        if ((errorMessage.includes('duplicate key value') || 
-            errorMessage.includes('employee_email_key') ||
-            errorMessage.includes('unique constraint')) && formData.email && formData.email.trim() !== '') {
-          errorMessage = `Email "${formData.email}" is already in use. Please use a different email address.`
-        }
-        
-        throw new Error(errorMessage)
+        throw error
       }
 
       setIsDialogOpen(false)
@@ -436,7 +421,7 @@ export default function UsersPage() {
       setAvatarPreview(null)
       await fetchUsers(searchQuery, currentPage)
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to update user"
+      const errorMessage = formatError(err) || "Failed to update user"
       setError(errorMessage)
       console.error("Error updating user:", err)
     } finally {
@@ -533,7 +518,7 @@ export default function UsersPage() {
       setIsSaving(false)
       await fetchUsers(searchQuery, currentPage)
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to add user"
+      const errorMessage = formatError(err) || "Failed to add user"
       setError(errorMessage)
       console.error("Error adding user:", err)
       setIsSaving(false)

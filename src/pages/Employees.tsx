@@ -39,6 +39,7 @@ import type { Employee } from "@/types/auth"
 import { uploadAvatar } from "@/lib/storage"
 import { supabase } from "@/lib/supabase"
 import { TableSkeleton } from "@/components/shared/TableSkeleton"
+import { formatError } from "@/lib/error-formatter"
 import { 
   canEditEmployees, 
   canViewEmployees, 
@@ -167,7 +168,7 @@ export default function EmployeesPage() {
       
       setEmployees(filteredEmployees)
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to fetch employees"
+      const errorMessage = formatError(err) || "Failed to fetch employees"
       setError(errorMessage)
       console.error("Error fetching employees:", err)
     } finally {
@@ -297,7 +298,7 @@ export default function EmployeesPage() {
 
       await fetchEmployees(searchQuery, currentPage)
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to delete employee"
+      const errorMessage = formatError(err) || "Failed to delete employee"
       setError(errorMessage)
       console.error("Error deleting employee:", err)
     } finally {
@@ -413,23 +414,7 @@ export default function EmployeesPage() {
           }
         )
       } catch (error: any) {
-        const errorText = error.response?.data || error.message
-        let errorMessage = `Failed to update employee: ${error.response?.statusText || error.message}`
-        
-        const errorData = typeof errorText === 'string' ? (() => {
-          try { return JSON.parse(errorText) } catch { return { message: errorText } }
-        })() : errorText
-        
-        errorMessage = errorData.message || errorData.error || errorMessage
-        
-        // Check for duplicate email constraint error (only if email is provided)
-        if ((errorMessage.includes('duplicate key value') || 
-            errorMessage.includes('employee_email_key') ||
-            errorMessage.includes('unique constraint')) && formData.email && formData.email.trim() !== '') {
-          errorMessage = `Email "${formData.email}" is already in use. Please use a different email address.`
-        }
-        
-        throw new Error(errorMessage)
+        throw error
       }
 
       setIsDialogOpen(false)
@@ -438,7 +423,7 @@ export default function EmployeesPage() {
       setAvatarPreview(null)
       await fetchEmployees(searchQuery, currentPage)
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to update employee"
+      const errorMessage = formatError(err) || "Failed to update employee"
       setError(errorMessage)
       console.error("Error updating employee:", err)
     } finally {
@@ -523,23 +508,7 @@ export default function EmployeesPage() {
           }
         )
       } catch (error: any) {
-        const errorText = error.response?.data || error.message
-        let errorMessage = `Failed to add employee: ${error.response?.statusText || error.message}`
-        
-        const errorData = typeof errorText === 'string' ? (() => {
-          try { return JSON.parse(errorText) } catch { return { message: errorText } }
-        })() : errorText
-        
-        errorMessage = errorData.message || errorData.error || errorMessage
-        
-        // Check for duplicate email constraint error (only if email is provided)
-        if ((errorMessage.includes('duplicate key value') || 
-            errorMessage.includes('employee_email_key') ||
-            errorMessage.includes('unique constraint')) && formData.email && formData.email.trim() !== '') {
-          errorMessage = `Email "${formData.email}" is already in use. Please use a different email address.`
-        }
-        
-        throw new Error(errorMessage)
+        throw error
       }
 
       setIsAddDialogOpen(false)
@@ -554,7 +523,7 @@ export default function EmployeesPage() {
       })
       await fetchEmployees(searchQuery, currentPage)
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to add employee"
+      const errorMessage = formatError(err) || "Failed to add employee"
       setError(errorMessage)
       console.error("Error adding employee:", err)
     } finally {

@@ -29,6 +29,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
+  Field,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field"
@@ -56,6 +57,7 @@ import { CITIES } from "@/config/cities"
 
 import type { Area } from "@/types/area"
 import { TableSkeleton } from "@/components/shared/TableSkeleton"
+import { formatError } from "@/lib/error-formatter"
 
 export default function AreasPage() {
   const { employee } = useAuth()
@@ -116,7 +118,7 @@ export default function AreasPage() {
       setAreas(response.data || [])
     } catch (err: any) {
       console.error("Error fetching areas:", err)
-      setError(err.message || "Failed to fetch areas")
+      setError(formatError(err) || "Failed to fetch areas")
     } finally {
       setLoading(false)
     }
@@ -157,31 +159,6 @@ export default function AreasPage() {
     setIsAddDialogOpen(true)
   }
 
-  const parseErrorMessage = (errorText: string): string => {
-    try {
-      const errorJson = JSON.parse(errorText)
-      
-      // Foreign key constraint violation (code 23503)
-      if (errorJson.code === "23503") {
-        // Check which table is referencing the area
-        if (errorJson.details?.includes("project")) {
-          return "Cannot delete this area because it is currently being used by one or more projects. Please remove the area from all projects before deleting it."
-        }
-        if (errorJson.details?.includes("property")) {
-          return "Cannot delete this area because it is currently being used by one or more properties. Please remove the area from all properties before deleting it."
-        }
-        // Generic foreign key error
-        return "Cannot delete this area because it is currently being used by other records. Please remove all references to this area before deleting it."
-      }
-      
-      // Return the message if available, otherwise return generic error
-      return errorJson.message || "Failed to delete area. Please try again."
-    } catch {
-      // If parsing fails, return the original error text or a generic message
-      return "Failed to delete area. Please try again."
-    }
-  }
-
   const handleDelete = async (areaId: number) => {
     if (!confirm("Are you sure you want to delete this area?")) {
       return
@@ -190,27 +167,22 @@ export default function AreasPage() {
     try {
       setDeletingAreaId(areaId)
 
-      try {
-        await axios.delete(
-          `${supabaseUrl}/rest/v1/area?id=eq.${areaId}`,
-          {
-            headers: {
-              "apikey": supabaseAnonKey,
-              "Authorization": `Bearer ${supabaseAnonKey}`,
-              "Content-Type": "application/json",
-            },
-          }
-        )
-      } catch (error: any) {
-        const errorText = error.response?.data || error.message
-        const userFriendlyMessage = parseErrorMessage(typeof errorText === 'string' ? errorText : JSON.stringify(errorText))
-        throw new Error(userFriendlyMessage)
-      }
+      await axios.delete(
+        `${supabaseUrl}/rest/v1/area?id=eq.${areaId}`,
+        {
+          headers: {
+            "apikey": supabaseAnonKey,
+            "Authorization": `Bearer ${supabaseAnonKey}`,
+            "Content-Type": "application/json",
+          },
+        }
+      )
 
       await fetchAreas(currentPage, selectedCity)
     } catch (err: any) {
       console.error("Error deleting area:", err)
-      alert(err.message || "Failed to delete area. Please try again.")
+      const message = formatError(err) || "Failed to delete area. Please try again."
+      alert(message)
     } finally {
       setDeletingAreaId(null)
     }
@@ -266,7 +238,8 @@ export default function AreasPage() {
       await fetchAreas(currentPage, selectedCity)
     } catch (err: any) {
       console.error("Error saving area:", err)
-      alert(err.message || "Failed to save area")
+      const message = formatError(err) || "Failed to save area"
+      alert(message)
     } finally {
       setIsSaving(false)
     }
@@ -347,7 +320,7 @@ export default function AreasPage() {
           )}
 
           {/* Filter Section */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 mb-4">
             <div className="flex items-center gap-2">
               <FieldLabel htmlFor="city-filter">Filter by City:</FieldLabel>
               <Select value={selectedCity} onValueChange={setSelectedCity}>
@@ -536,37 +509,41 @@ export default function AreasPage() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <FieldGroup>
-              <FieldLabel htmlFor="edit-title">Title *</FieldLabel>
-              <Input
-                id="edit-title"
-                value={formData.title}
-                onChange={(e) =>
-                  setFormData({ ...formData, title: e.target.value })
-                }
-                placeholder="Enter area title"
-                disabled={isSaving}
-              />
+              <Field>
+                <FieldLabel htmlFor="edit-title">Title *</FieldLabel>
+                <Input
+                  id="edit-title"
+                  value={formData.title}
+                  onChange={(e) =>
+                    setFormData({ ...formData, title: e.target.value })
+                  }
+                  placeholder="Enter area title"
+                  disabled={isSaving}
+                />
+              </Field>
             </FieldGroup>
             <FieldGroup>
-              <FieldLabel htmlFor="edit-city">City *</FieldLabel>
-              <Select
-                value={formData.city}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, city: value })
-                }
-                disabled={isSaving}
-              >
-                <SelectTrigger id="edit-city">
-                  <SelectValue placeholder="Select a city" />
-                </SelectTrigger>
-                <SelectContent>
-                  {CITIES.map((city) => (
-                    <SelectItem key={city} value={city}>
-                      {city}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Field>
+                <FieldLabel htmlFor="edit-city">City *</FieldLabel>
+                <Select
+                  value={formData.city}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, city: value })
+                  }
+                  disabled={isSaving}
+                >
+                  <SelectTrigger id="edit-city">
+                    <SelectValue placeholder="Select a city" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CITIES.map((city) => (
+                      <SelectItem key={city} value={city}>
+                        {city}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
             </FieldGroup>
           </div>
           <DialogFooter>
@@ -595,37 +572,41 @@ export default function AreasPage() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <FieldGroup>
-              <FieldLabel htmlFor="add-title">Title *</FieldLabel>
-              <Input
-                id="add-title"
-                value={formData.title}
-                onChange={(e) =>
-                  setFormData({ ...formData, title: e.target.value })
-                }
-                placeholder="Enter area title"
-                disabled={isSaving}
-              />
+              <Field>
+                <FieldLabel htmlFor="add-title">Title *</FieldLabel>
+                <Input
+                  id="add-title"
+                  value={formData.title}
+                  onChange={(e) =>
+                    setFormData({ ...formData, title: e.target.value })
+                  }
+                  placeholder="Enter area title"
+                  disabled={isSaving}
+                />
+              </Field>
             </FieldGroup>
             <FieldGroup>
-              <FieldLabel htmlFor="add-city">City *</FieldLabel>
-              <Select
-                value={formData.city}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, city: value })
-                }
-                disabled={isSaving}
-              >
-                <SelectTrigger id="add-city">
-                  <SelectValue placeholder="Select a city" />
-                </SelectTrigger>
-                <SelectContent>
-                  {CITIES.map((city) => (
-                    <SelectItem key={city} value={city}>
-                      {city}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Field>
+                <FieldLabel htmlFor="add-city">City *</FieldLabel>
+                <Select
+                  value={formData.city}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, city: value })
+                  }
+                  disabled={isSaving}
+                >
+                  <SelectTrigger id="add-city">
+                    <SelectValue placeholder="Select a city" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CITIES.map((city) => (
+                      <SelectItem key={city} value={city}>
+                        {city}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
             </FieldGroup>
           </div>
           <DialogFooter>

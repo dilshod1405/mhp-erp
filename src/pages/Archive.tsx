@@ -93,6 +93,7 @@ import {
 } from "@/components/ui/sheet"
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner"
 import { TableSkeleton } from "@/components/shared/TableSkeleton"
+import { formatError } from "@/lib/error-formatter"
 
 import type { PropertyTransaction } from "@/types/archive"
 
@@ -217,7 +218,7 @@ export default function ArchivePage() {
       setProperties(data || [])
     } catch (err: unknown) {
       console.error("Error fetching properties:", err)
-      const message = err instanceof Error ? err.message : "Failed to fetch properties"
+      const message = formatError(err) || "Failed to fetch properties"
       setError(message)
     } finally {
       setLoading(false)
@@ -273,7 +274,7 @@ export default function ArchivePage() {
       setAvailableAreas(uniqueAreas)
     } catch (err) {
       console.error("Error fetching areas:", err)
-      setError(`Failed to fetch areas: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      setError(`Failed to fetch areas: ${formatError(err) || 'Unknown error'}`)
     } finally {
       setLoadingAreas(false)
     }
@@ -339,7 +340,7 @@ export default function ArchivePage() {
       await fetchProperties(currentPage)
     } catch (err: unknown) {
       console.error("Error uploading file:", err)
-      const message = err instanceof Error ? err.message : "Failed to upload file"
+      const message = formatError(err) || "Failed to upload file"
       setError(message)
     } finally {
       setUploading(false)
@@ -443,7 +444,7 @@ export default function ArchivePage() {
       await fetchProperties(currentPage)
     } catch (err: unknown) {
       console.error("Error deleting properties:", err)
-      const message = err instanceof Error ? err.message : "Failed to delete properties"
+      const message = formatError(err) || "Failed to delete properties"
       setError(message)
     } finally {
       setIsDeleting(false)

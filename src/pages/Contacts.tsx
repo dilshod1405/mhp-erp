@@ -29,6 +29,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
+  Field,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field"
@@ -46,6 +47,7 @@ import { Pencil, Trash2, Plus, Search } from "lucide-react"
 
 import type { Contact } from "@/types/contact"
 import { TableSkeleton } from "@/components/shared/TableSkeleton"
+import { formatError } from "@/lib/error-formatter"
 
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([])
@@ -110,7 +112,7 @@ export default function ContactsPage() {
       setContacts(response.data || [])
     } catch (err: unknown) {
       console.error("Error fetching contacts:", err)
-      const message = err instanceof Error ? err.message : "Failed to fetch contacts"
+      const message = formatError(err) || "Failed to fetch contacts"
       setError(message)
     } finally {
       setLoading(false)
@@ -177,7 +179,7 @@ export default function ContactsPage() {
       await fetchContacts()
     } catch (err: unknown) {
       console.error("Error deleting contact:", err)
-      const message = err instanceof Error ? err.message : "Failed to delete contact"
+      const message = formatError(err) || "Failed to delete contact"
       alert(message)
     } finally {
       setDeletingContactId(null)
@@ -244,7 +246,7 @@ export default function ContactsPage() {
       await fetchContacts()
     } catch (err: unknown) {
       console.error("Error saving contact:", err)
-      const message = err instanceof Error ? err.message : "Failed to save contact"
+      const message = formatError(err) || "Failed to save contact"
       alert(message)
     } finally {
       setIsSaving(false)
@@ -462,35 +464,41 @@ export default function ContactsPage() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <FieldGroup>
-              <FieldLabel htmlFor="edit-fullname">Full Name *</FieldLabel>
-              <Input
-                id="edit-fullname"
-                value={formData.full_name}
-                onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                placeholder="Enter full name"
-                disabled={isSaving}
-              />
+              <Field>
+                <FieldLabel htmlFor="edit-fullname">Full Name *</FieldLabel>
+                <Input
+                  id="edit-fullname"
+                  value={formData.full_name}
+                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                  placeholder="Enter full name"
+                  disabled={isSaving}
+                />
+              </Field>
             </FieldGroup>
             <FieldGroup>
-              <FieldLabel htmlFor="edit-email">Email *</FieldLabel>
-              <Input
-                id="edit-email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                placeholder="Enter email address"
-                disabled={isSaving}
-              />
+              <Field>
+                <FieldLabel htmlFor="edit-email">Email *</FieldLabel>
+                <Input
+                  id="edit-email"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  placeholder="Enter email address"
+                  disabled={isSaving}
+                />
+              </Field>
             </FieldGroup>
             <FieldGroup>
-              <FieldLabel htmlFor="edit-phone">Phone *</FieldLabel>
-              <Input
-                id="edit-phone"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                placeholder="Enter phone number"
-                disabled={isSaving}
-              />
+              <Field>
+                <FieldLabel htmlFor="edit-phone">Phone *</FieldLabel>
+                <Input
+                  id="edit-phone"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  placeholder="Enter phone number"
+                  disabled={isSaving}
+                />
+              </Field>
             </FieldGroup>
           </div>
           <DialogFooter>
@@ -509,35 +517,41 @@ export default function ContactsPage() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <FieldGroup>
-              <FieldLabel htmlFor="add-fullname">Full Name *</FieldLabel>
-              <Input
-                id="add-fullname"
-                value={formData.full_name}
-                onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                placeholder="Enter full name"
-                disabled={isSaving}
-              />
+              <Field>
+                <FieldLabel htmlFor="add-fullname">Full Name *</FieldLabel>
+                <Input
+                  id="add-fullname"
+                  value={formData.full_name}
+                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                  placeholder="Enter full name"
+                  disabled={isSaving}
+                />
+              </Field>
             </FieldGroup>
             <FieldGroup>
-              <FieldLabel htmlFor="add-email">Email *</FieldLabel>
-              <Input
-                id="add-email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                placeholder="Enter email address"
-                disabled={isSaving}
-              />
+              <Field>
+                <FieldLabel htmlFor="add-email">Email *</FieldLabel>
+                <Input
+                  id="add-email"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  placeholder="Enter email address"
+                  disabled={isSaving}
+                />
+              </Field>
             </FieldGroup>
             <FieldGroup>
-              <FieldLabel htmlFor="add-phone">Phone *</FieldLabel>
-              <Input
-                id="add-phone"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                placeholder="Enter phone number"
-                disabled={isSaving}
-              />
+              <Field>
+                <FieldLabel htmlFor="add-phone">Phone *</FieldLabel>
+                <Input
+                  id="add-phone"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  placeholder="Enter phone number"
+                  disabled={isSaving}
+                />
+              </Field>
             </FieldGroup>
           </div>
           <DialogFooter>

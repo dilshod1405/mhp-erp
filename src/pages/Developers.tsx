@@ -26,6 +26,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
+  Field,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field"
@@ -53,6 +54,7 @@ import { format } from "date-fns"
 
 import type { Developer } from "@/types/developer"
 import { CardSkeleton } from "@/components/shared/CardSkeleton"
+import { formatError } from "@/lib/error-formatter"
 
 export default function DevelopersPage() {
   const { employee } = useAuth()
@@ -137,7 +139,7 @@ export default function DevelopersPage() {
       setDevelopers(response.data || [])
     } catch (err: any) {
       console.error("Error fetching developers:", err)
-      setError(err.message || "Failed to fetch developers")
+      setError(formatError(err) || "Failed to fetch developers")
     } finally {
       setLoading(false)
     }
@@ -195,27 +197,6 @@ export default function DevelopersPage() {
     setIsAddDialogOpen(true)
   }
 
-  const parseErrorMessage = (errorText: string): string => {
-    try {
-      const errorJson = JSON.parse(errorText)
-      
-      // Foreign key constraint violation (code 23503)
-      if (errorJson.code === "23503") {
-        if (errorJson.details?.includes("project")) {
-          return "Cannot delete this developer because it is currently being used by one or more projects. Please remove the developer from all projects before deleting it."
-        }
-        if (errorJson.details?.includes("property")) {
-          return "Cannot delete this developer because it is currently being used by one or more properties. Please remove the developer from all properties before deleting it."
-        }
-        return "Cannot delete this developer because it is currently being used by other records. Please remove all references to this developer before deleting it."
-      }
-      
-      return errorJson.message || "Failed to delete developer. Please try again."
-    } catch {
-      return "Failed to delete developer. Please try again."
-    }
-  }
-
   const handleDelete = async (developerId: number) => {
     if (!confirm("Are you sure you want to delete this developer?")) {
       return
@@ -224,27 +205,22 @@ export default function DevelopersPage() {
     try {
       setDeletingDeveloperId(developerId)
 
-      try {
-        await axios.delete(
-          `${supabaseUrl}/rest/v1/developer?id=eq.${developerId}`,
-          {
-            headers: {
-              "apikey": supabaseAnonKey,
-              "Authorization": `Bearer ${supabaseAnonKey}`,
-              "Content-Type": "application/json",
-            },
-          }
-        )
-      } catch (error: any) {
-        const errorText = error.response?.data || error.message
-        const userFriendlyMessage = parseErrorMessage(typeof errorText === 'string' ? errorText : JSON.stringify(errorText))
-        throw new Error(userFriendlyMessage)
-      }
+      await axios.delete(
+        `${supabaseUrl}/rest/v1/developer?id=eq.${developerId}`,
+        {
+          headers: {
+            "apikey": supabaseAnonKey,
+            "Authorization": `Bearer ${supabaseAnonKey}`,
+            "Content-Type": "application/json",
+          },
+        }
+      )
 
       await fetchDevelopers(currentPage)
     } catch (err: any) {
       console.error("Error deleting developer:", err)
-      alert(err.message || "Failed to delete developer. Please try again.")
+      const message = formatError(err) || "Failed to delete developer. Please try again."
+      alert(message)
     } finally {
       setDeletingDeveloperId(null)
     }
@@ -317,7 +293,8 @@ export default function DevelopersPage() {
       await fetchDevelopers(currentPage)
     } catch (err: any) {
       console.error("Error saving developer:", err)
-      alert(err.message || "Failed to save developer")
+      const message = formatError(err) || "Failed to save developer"
+      alert(message)
     } finally {
       setIsSaving(false)
     }
@@ -554,15 +531,17 @@ export default function DevelopersPage() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <FieldGroup>
-              <FieldLabel htmlFor="edit-logo">Logo</FieldLabel>
-              <Input
-                id="edit-logo"
-                type="file"
-                accept="image/*"
-                onChange={handleLogoChange}
-                disabled={isSaving}
-                className="cursor-pointer"
-              />
+              <Field>
+                <FieldLabel htmlFor="edit-logo">Logo</FieldLabel>
+                <Input
+                  id="edit-logo"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoChange}
+                  disabled={isSaving}
+                  className="cursor-pointer"
+                />
+              </Field>
               {logoPreview && (
                 <div className="mt-2">
                   <img 
@@ -577,42 +556,46 @@ export default function DevelopersPage() {
               )}
             </FieldGroup>
             <FieldGroup>
-              <FieldLabel htmlFor="edit-title">Title *</FieldLabel>
-              <Input
-                id="edit-title"
-                value={formData.title}
-                onChange={(e) =>
-                  setFormData({ ...formData, title: e.target.value })
-                }
-                placeholder="Enter developer title"
-                disabled={isSaving}
-              />
+              <Field>
+                <FieldLabel htmlFor="edit-title">Title *</FieldLabel>
+                <Input
+                  id="edit-title"
+                  value={formData.title}
+                  onChange={(e) =>
+                    setFormData({ ...formData, title: e.target.value })
+                  }
+                  placeholder="Enter developer title"
+                  disabled={isSaving}
+                />
+              </Field>
             </FieldGroup>
             <FieldGroup>
-              <FieldLabel>Foundation Date *</FieldLabel>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start text-left font-normal cursor-pointer"
-                    disabled={isSaving}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {foundationDate ? format(foundationDate, "PPP") : <span className="text-muted-foreground">Pick a date</span>}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={foundationDate}
-                    onSelect={setFoundationDate}
-                    initialFocus
-                    captionLayout="dropdown"
-                    fromYear={1900}
-                    toYear={new Date().getFullYear()}
-                  />
-                </PopoverContent>
-              </Popover>
+              <Field>
+                <FieldLabel>Foundation Date *</FieldLabel>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start text-left font-normal cursor-pointer"
+                      disabled={isSaving}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {foundationDate ? format(foundationDate, "PPP") : <span className="text-muted-foreground">Pick a date</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={foundationDate}
+                      onSelect={setFoundationDate}
+                      initialFocus
+                      captionLayout="dropdown"
+                      fromYear={1900}
+                      toYear={new Date().getFullYear()}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </Field>
             </FieldGroup>
           </div>
           <DialogFooter>
@@ -641,15 +624,17 @@ export default function DevelopersPage() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <FieldGroup>
-              <FieldLabel htmlFor="add-logo">Logo</FieldLabel>
-              <Input
-                id="add-logo"
-                type="file"
-                accept="image/*"
-                onChange={handleLogoChange}
-                disabled={isSaving}
-                className="cursor-pointer"
-              />
+              <Field>
+                <FieldLabel htmlFor="add-logo">Logo</FieldLabel>
+                <Input
+                  id="add-logo"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoChange}
+                  disabled={isSaving}
+                  className="cursor-pointer"
+                />
+              </Field>
               {logoPreview && (
                 <div className="mt-2">
                   <img 
@@ -664,42 +649,46 @@ export default function DevelopersPage() {
               )}
             </FieldGroup>
             <FieldGroup>
-              <FieldLabel htmlFor="add-title">Title *</FieldLabel>
-              <Input
-                id="add-title"
-                value={formData.title}
-                onChange={(e) =>
-                  setFormData({ ...formData, title: e.target.value })
-                }
-                placeholder="Enter developer title"
-                disabled={isSaving}
-              />
+              <Field>
+                <FieldLabel htmlFor="add-title">Title *</FieldLabel>
+                <Input
+                  id="add-title"
+                  value={formData.title}
+                  onChange={(e) =>
+                    setFormData({ ...formData, title: e.target.value })
+                  }
+                  placeholder="Enter developer title"
+                  disabled={isSaving}
+                />
+              </Field>
             </FieldGroup>
             <FieldGroup>
-              <FieldLabel>Foundation Date *</FieldLabel>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start text-left font-normal cursor-pointer"
-                    disabled={isSaving}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {foundationDate ? format(foundationDate, "PPP") : <span className="text-muted-foreground">Pick a date</span>}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={foundationDate}
-                    onSelect={setFoundationDate}
-                    initialFocus
-                    captionLayout="dropdown"
-                    fromYear={1900}
-                    toYear={new Date().getFullYear()}
-                  />
-                </PopoverContent>
-              </Popover>
+              <Field>
+                <FieldLabel>Foundation Date *</FieldLabel>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start text-left font-normal cursor-pointer"
+                      disabled={isSaving}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {foundationDate ? format(foundationDate, "PPP") : <span className="text-muted-foreground">Pick a date</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={foundationDate}
+                      onSelect={setFoundationDate}
+                      initialFocus
+                      captionLayout="dropdown"
+                      fromYear={1900}
+                      toYear={new Date().getFullYear()}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </Field>
             </FieldGroup>
           </div>
           <DialogFooter>
