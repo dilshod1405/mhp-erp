@@ -98,7 +98,7 @@ export function formatError(error: unknown): string {
 /**
  * Formats check constraint errors (code 23514)
  */
-function formatCheckConstraintError(message: string, details: string): string {
+function formatCheckConstraintError(message: string, _details: string): string {
   // Extract constraint name and field from the error message
   const constraintMatch = message.match(/check constraint "([^"]+)"/i)
   const constraintName = constraintMatch ? constraintMatch[1] : ''
@@ -158,7 +158,7 @@ function formatForeignKeyError(message: string, details: string): string {
 /**
  * Formats unique constraint errors (code 23505)
  */
-function formatUniqueConstraintError(message: string, details: string): string {
+function formatUniqueConstraintError(message: string, _details: string): string {
   // Try to extract field name from message
   const fieldMatch = message.match(/Key \(([^)]+)\)/i) || 
                      message.match(/duplicate key value.*\(([^)]+)\)/i)
@@ -176,7 +176,7 @@ function formatUniqueConstraintError(message: string, details: string): string {
 /**
  * Formats not null constraint errors (code 23502)
  */
-function formatNotNullError(message: string, details: string): string {
+function formatNotNullError(message: string, _details: string): string {
   // Try to extract column name
   const columnMatch = message.match(/null value in column "([^"]+)"|column "([^"]+)" of relation/i)
   const columnName = columnMatch ? (columnMatch[1] || columnMatch[2]) : 'field'
