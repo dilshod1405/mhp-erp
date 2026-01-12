@@ -722,6 +722,7 @@ export function ProjectFormDialog({
                                     onTravelTimesChange(updated)
                                   }
                                 }}
+                                disabled={isSaving}
                               >
                                 <SelectTrigger className="cursor-pointer">
                                   <SelectValue placeholder="Select location/icon" />
