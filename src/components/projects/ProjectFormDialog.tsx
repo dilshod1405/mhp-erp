@@ -20,7 +20,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Video, FileText, X, Upload, Plus, Plane, Train, Bus, Car, Trash2 } from "lucide-react"
+import { Video, FileText, X, Upload, Plus, Trash2, MapPin } from "lucide-react"
+import { TRAVEL_TIME_ICONS, getTravelTimeIcon } from "@/config/travel-time-icons"
 import { useEffect, useMemo, useRef } from "react"
 import { PROJECT_TYPE_DISPLAY_NAMES, type ProjectType } from "@/config/project-types"
 import type { Developer } from "@/types/developer"
@@ -162,14 +163,19 @@ export function ProjectFormDialog({
               {error}
             </div>
           )}
-          {isSaving && (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              {isEditing ? "Saving..." : "Creating..."}
-            </div>
-          )}
           
-          <Tabs defaultValue="general" className="w-full">
+          <div className="relative">
+            {isSaving && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80 backdrop-blur-sm rounded-md">
+                <div className="flex flex-col items-center gap-2">
+                  <div className="h-8 w-8 animate-spin rounded-full border-3 border-primary border-t-transparent" />
+                  <p className="text-sm font-medium text-muted-foreground">
+                    {isEditing ? "Saving changes..." : "Creating project..."}
+                  </p>
+                </div>
+              </div>
+            )}
+            <Tabs defaultValue="general" className="w-full" style={{ pointerEvents: isSaving ? 'none' : 'auto' }}>
             <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="general">General</TabsTrigger>
               <TabsTrigger value="media">Media</TabsTrigger>
@@ -221,6 +227,24 @@ export function ProjectFormDialog({
                       {areas && areas.length > 0 && areas.map((area) => (
                         <SelectItem key={area.id} value={area.id.toString()} className="cursor-pointer">
                           {area.title} ({area.city})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor={isEditing ? "type" : "add_type"}>Type *</FieldLabel>
+                  <Select
+                    value={formData.type || "Off Plan"}
+                    onValueChange={(value) => handleFormFieldChange("type", value as ProjectType)}
+                  >
+                    <SelectTrigger className="cursor-pointer">
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(PROJECT_TYPE_DISPLAY_NAMES).map(([key, displayName]) => (
+                        <SelectItem key={key} value={key} className="cursor-pointer">
+                          {displayName}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -591,35 +615,36 @@ export function ProjectFormDialog({
                     <div className="space-y-2">
                       {travelTimes
                         .filter(tt => !travelTimesToDelete.includes(tt.id))
-                        .map((travelTime) => (
-                          <div key={travelTime.id} className="flex items-center gap-3 p-3 border rounded-lg bg-muted/30 group hover:bg-muted/50 transition-colors">
-                            <div className="flex-shrink-0 w-10 h-10 bg-primary/10 rounded flex items-center justify-center">
-                              {travelTime.icon === 'airport' && <Plane className="h-5 w-5 text-primary" />}
-                              {travelTime.icon === 'metro' && <Train className="h-5 w-5 text-primary" />}
-                              {travelTime.icon === 'bus' && <Bus className="h-5 w-5 text-primary" />}
-                              {travelTime.icon === 'car' && <Car className="h-5 w-5 text-primary" />}
-                              {!['airport', 'metro', 'bus', 'car'].includes(travelTime.icon) && <Car className="h-5 w-5 text-primary" />}
+                        .map((travelTime) => {
+                          const iconConfig = getTravelTimeIcon(travelTime.icon)
+                          const IconComponent = iconConfig?.icon || MapPin
+                          const iconLabel = iconConfig?.label || travelTime.icon
+                          return (
+                            <div key={travelTime.id} className="flex items-center gap-3 p-3 border rounded-lg bg-muted/30 group hover:bg-muted/50 transition-colors">
+                              <div className="flex-shrink-0 w-10 h-10 bg-primary/10 rounded flex items-center justify-center">
+                                <IconComponent className="h-5 w-5 text-primary" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium">{iconLabel}</p>
+                                <p className="text-xs text-muted-foreground">{travelTime.minutes} minutes</p>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  if (onTravelTimesToDeleteChange) {
+                                    onTravelTimesToDeleteChange([...travelTimesToDelete, travelTime.id])
+                                  }
+                                }}
+                                disabled={isSaving}
+                                className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium capitalize">{travelTime.icon}</p>
-                              <p className="text-xs text-muted-foreground">{travelTime.minutes} minutes</p>
-                            </div>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                if (onTravelTimesToDeleteChange) {
-                                  onTravelTimesToDeleteChange([...travelTimesToDelete, travelTime.id])
-                                }
-                              }}
-                              disabled={isSaving}
-                              className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        ))}
+                          )
+                        })}
                     </div>
                   </div>
                 )}
@@ -644,7 +669,7 @@ export function ProjectFormDialog({
                     variant="outline"
                     onClick={() => {
                       if (onTravelTimesChange) {
-                        onTravelTimesChange([...travelTimes, { id: Date.now(), project_id: 0, minutes: 0, icon: 'car' }])
+                        onTravelTimesChange([...travelTimes, { id: Date.now(), project_id: 0, minutes: 0, icon: 'taxi' }])
                       }
                     }}
                     disabled={isSaving}
@@ -699,33 +724,20 @@ export function ProjectFormDialog({
                                 }}
                               >
                                 <SelectTrigger className="cursor-pointer">
-                                  <SelectValue placeholder="Select icon" />
+                                  <SelectValue placeholder="Select location/icon" />
                                 </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="airport" className="cursor-pointer">
-                                    <div className="flex items-center gap-2">
-                                      <Plane className="h-4 w-4" />
-                                      Airport
-                                    </div>
-                                  </SelectItem>
-                                  <SelectItem value="metro" className="cursor-pointer">
-                                    <div className="flex items-center gap-2">
-                                      <Train className="h-4 w-4" />
-                                      Metro
-                                    </div>
-                                  </SelectItem>
-                                  <SelectItem value="bus" className="cursor-pointer">
-                                    <div className="flex items-center gap-2">
-                                      <Bus className="h-4 w-4" />
-                                      Bus
-                                    </div>
-                                  </SelectItem>
-                                  <SelectItem value="car" className="cursor-pointer">
-                                    <div className="flex items-center gap-2">
-                                      <Car className="h-4 w-4" />
-                                      Car
-                                    </div>
-                                  </SelectItem>
+                                <SelectContent className="max-h-[300px]">
+                                  {TRAVEL_TIME_ICONS.map((iconConfig) => {
+                                    const IconComponent = iconConfig.icon
+                                    return (
+                                      <SelectItem key={iconConfig.value} value={iconConfig.value} className="cursor-pointer">
+                                        <div className="flex items-center gap-2">
+                                          <IconComponent className="h-4 w-4" />
+                                          {iconConfig.label}
+                                        </div>
+                                      </SelectItem>
+                                    )
+                                  })}
                                 </SelectContent>
                               </Select>
                             </Field>
@@ -907,6 +919,7 @@ export function ProjectFormDialog({
               </FieldGroup>
             </TabsContent>
           </Tabs>
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>

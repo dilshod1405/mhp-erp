@@ -14,7 +14,10 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
-import { Plus } from "lucide-react"
+import { FieldLabel } from "@/components/ui/field"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
+import { Plus, X } from "lucide-react"
 import { ProjectFormDialog } from "@/components/projects/ProjectFormDialog"
 import { ProjectsTable } from "@/components/projects/ProjectsTable"
 import { ProjectsFilters } from "@/components/projects/ProjectsFilters"
@@ -1150,33 +1153,145 @@ export default function ProjectsPage() {
           </div>
 
           {/* Search Bar and Filter Button */}
-          <div className="flex items-center gap-2 mb-4">
-            <SearchBar
-              value={searchQuery}
-              onChange={setSearchQuery}
-              onSearch={handleSearch}
-              placeholder="Search by slug..."
-            />
-            <ProjectsFilters
-              isMobile={isMobile}
-              isFilterOpen={isFilterOpen}
-              onFilterToggle={() => setIsFilterOpen(!isFilterOpen)}
-              onFilterOpenChange={setIsFilterOpen}
-              filterDeveloper={filterDeveloper}
-              filterArea={filterArea}
-              filterPriceMin={filterPriceMin}
-              filterPriceMax={filterPriceMax}
-              developers={developers}
-              areas={areas}
-              hasFilterChanges={hasFilterChanges}
-              hasActiveFilters={hasActiveFilters}
-              onDeveloperChange={setFilterDeveloper}
-              onAreaChange={setFilterArea}
-              onPriceMinChange={setFilterPriceMin}
-              onPriceMaxChange={setFilterPriceMax}
-              onApplyFilters={applyFilters}
-              onClearFilters={clearFilters}
-            />
+          <div className="mb-4">
+            <div className="flex items-center gap-2 mb-4">
+              <SearchBar
+                value={searchQuery}
+                onChange={setSearchQuery}
+                onSearch={handleSearch}
+                placeholder="Search by slug..."
+              />
+              <ProjectsFilters
+                isMobile={isMobile}
+                isFilterOpen={isFilterOpen}
+                onFilterToggle={() => setIsFilterOpen(!isFilterOpen)}
+                onFilterOpenChange={setIsFilterOpen}
+                filterDeveloper={filterDeveloper}
+                filterArea={filterArea}
+                filterPriceMin={filterPriceMin}
+                filterPriceMax={filterPriceMax}
+                developers={developers}
+                areas={areas}
+                hasFilterChanges={hasFilterChanges}
+                hasActiveFilters={hasActiveFilters}
+                onDeveloperChange={setFilterDeveloper}
+                onAreaChange={setFilterArea}
+                onPriceMinChange={setFilterPriceMin}
+                onPriceMaxChange={setFilterPriceMax}
+                onApplyFilters={applyFilters}
+                onClearFilters={clearFilters}
+              />
+            </div>
+            {/* Filters displayed below search bar when open */}
+            {isFilterOpen && !isMobile && (
+              <div className="flex items-center gap-4 flex-wrap pb-4 border-b">
+                <div className="flex items-center gap-2">
+                  <FieldLabel htmlFor="filter-developer">Developer:</FieldLabel>
+                  <Select value={filterDeveloper} onValueChange={setFilterDeveloper}>
+                    <SelectTrigger id="filter-developer" className="w-[200px] cursor-pointer">
+                      <SelectValue placeholder="All Developers" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all" className="cursor-pointer">All Developers</SelectItem>
+                      {developers.map((dev) => (
+                        <SelectItem key={dev.id} value={dev.id.toString()} className="cursor-pointer">
+                          {dev.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <FieldLabel htmlFor="filter-area">Area:</FieldLabel>
+                  <Select value={filterArea} onValueChange={setFilterArea}>
+                    <SelectTrigger id="filter-area" className="w-[200px] cursor-pointer">
+                      <SelectValue placeholder="All Areas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all" className="cursor-pointer">All Areas</SelectItem>
+                      {areas.map((area) => (
+                        <SelectItem key={area.id} value={area.id.toString()} className="cursor-pointer">
+                          {area.title} ({area.city})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <FieldLabel htmlFor="filter-price-min">Price Min:</FieldLabel>
+                  <Input
+                    id="filter-price-min"
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="Min"
+                    value={filterPriceMin}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      // Allow empty string, or numbers that are non-negative
+                      if (value === '' || (!value.includes('-') && (value === '0' || (!isNaN(parseFloat(value)) && parseFloat(value) >= 0)))) {
+                        setFilterPriceMin(value)
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      // Prevent minus, plus, and 'e' keys
+                      if (e.key === '-' || e.key === '+' || e.key === 'e' || e.key === 'E') {
+                        e.preventDefault()
+                      }
+                    }}
+                    className="w-[120px] cursor-pointer"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <FieldLabel htmlFor="filter-price-max">Price Max:</FieldLabel>
+                  <Input
+                    id="filter-price-max"
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="Max"
+                    value={filterPriceMax}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      // Allow empty string, or numbers that are non-negative
+                      if (value === '' || (!value.includes('-') && (value === '0' || (!isNaN(parseFloat(value)) && parseFloat(value) >= 0)))) {
+                        setFilterPriceMax(value)
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      // Prevent minus, plus, and 'e' keys
+                      if (e.key === '-' || e.key === '+' || e.key === 'e' || e.key === 'E') {
+                        e.preventDefault()
+                      }
+                    }}
+                    className="w-[120px] cursor-pointer"
+                  />
+                </div>
+
+                <Button
+                  onClick={applyFilters}
+                  className="cursor-pointer"
+                  disabled={!hasFilterChanges}
+                >
+                  Apply Filters
+                </Button>
+
+                {hasActiveFilters && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={clearFilters}
+                    className="cursor-pointer"
+                  >
+                    <X className="h-4 w-4 mr-2" />
+                    Clear Filters
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
 
           {error && (

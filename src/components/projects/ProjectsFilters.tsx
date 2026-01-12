@@ -74,88 +74,6 @@ export function ProjectsFilters({
         Filters
       </Button>
 
-      {/* Desktop Filters */}
-      {isFilterOpen && !isMobile && (
-        <div className="hidden md:flex items-center gap-4 flex-wrap">
-          <div className="flex items-center gap-2">
-            <FieldLabel htmlFor="filter-developer">Developer:</FieldLabel>
-            <Select value={filterDeveloper} onValueChange={onDeveloperChange}>
-              <SelectTrigger id="filter-developer" className="w-[200px] cursor-pointer">
-                <SelectValue placeholder="All Developers" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all" className="cursor-pointer">All Developers</SelectItem>
-                {developers.map((dev) => (
-                  <SelectItem key={dev.id} value={dev.id.toString()} className="cursor-pointer">
-                    {dev.title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <FieldLabel htmlFor="filter-area">Area:</FieldLabel>
-            <Select value={filterArea} onValueChange={onAreaChange}>
-              <SelectTrigger id="filter-area" className="w-[200px] cursor-pointer">
-                <SelectValue placeholder="All Areas" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all" className="cursor-pointer">All Areas</SelectItem>
-                {areas.map((area) => (
-                  <SelectItem key={area.id} value={area.id.toString()} className="cursor-pointer">
-                    {area.title} ({area.city})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <FieldLabel htmlFor="filter-price-min">Price Min:</FieldLabel>
-            <Input
-              id="filter-price-min"
-              type="number"
-              placeholder="Min"
-              value={filterPriceMin}
-              onChange={(e) => onPriceMinChange(e.target.value)}
-              className="w-[120px] cursor-pointer"
-            />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <FieldLabel htmlFor="filter-price-max">Price Max:</FieldLabel>
-            <Input
-              id="filter-price-max"
-              type="number"
-              placeholder="Max"
-              value={filterPriceMax}
-              onChange={(e) => onPriceMaxChange(e.target.value)}
-              className="w-[120px] cursor-pointer"
-            />
-          </div>
-
-          <Button
-            onClick={onApplyFilters}
-            className="cursor-pointer"
-            disabled={!hasFilterChanges}
-          >
-            Apply Filters
-          </Button>
-
-          {hasActiveFilters && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onClearFilters}
-              className="cursor-pointer"
-            >
-              <X className="h-4 w-4 mr-2" />
-              Clear Filters
-            </Button>
-          )}
-        </div>
-      )}
 
       {/* Mobile Filter Dialog */}
       <Dialog 
@@ -213,9 +131,23 @@ export function ProjectsFilters({
               <Input
                 id="sheet-filter-price-min"
                 type="number"
+                min="0"
+                step="1"
                 placeholder="Min"
                 value={filterPriceMin}
-                onChange={(e) => onPriceMinChange(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value
+                  // Allow empty string, or numbers that are non-negative
+                  if (value === '' || (!value.includes('-') && (value === '0' || (!isNaN(parseFloat(value)) && parseFloat(value) >= 0)))) {
+                    onPriceMinChange(value)
+                  }
+                }}
+                onKeyDown={(e) => {
+                  // Prevent minus, plus, and 'e' keys
+                  if (e.key === '-' || e.key === '+' || e.key === 'e' || e.key === 'E') {
+                    e.preventDefault()
+                  }
+                }}
                 className="cursor-pointer"
               />
             </Field>
@@ -225,9 +157,23 @@ export function ProjectsFilters({
               <Input
                 id="sheet-filter-price-max"
                 type="number"
+                min="0"
+                step="1"
                 placeholder="Max"
                 value={filterPriceMax}
-                onChange={(e) => onPriceMaxChange(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value
+                  // Allow empty string, or numbers that are non-negative
+                  if (value === '' || (!value.includes('-') && (value === '0' || (!isNaN(parseFloat(value)) && parseFloat(value) >= 0)))) {
+                    onPriceMaxChange(value)
+                  }
+                }}
+                onKeyDown={(e) => {
+                  // Prevent minus, plus, and 'e' keys
+                  if (e.key === '-' || e.key === '+' || e.key === 'e' || e.key === 'E') {
+                    e.preventDefault()
+                  }
+                }}
                 className="cursor-pointer"
               />
             </Field>
