@@ -94,6 +94,7 @@ import {
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner"
 import { TableSkeleton } from "@/components/shared/TableSkeleton"
 import { formatError } from "@/lib/error-formatter"
+import { toast } from "sonner"
 
 import type { PropertyTransaction } from "@/types/archive"
 
@@ -219,7 +220,7 @@ export default function ArchivePage() {
     } catch (err: unknown) {
       console.error("Error fetching properties:", err)
       const message = formatError(err) || "Failed to fetch properties"
-      setError(message)
+      toast.error(message)
     } finally {
       setLoading(false)
     }
@@ -246,7 +247,7 @@ export default function ArchivePage() {
         
         if (error) {
           console.error("Error fetching areas:", error)
-          setError(`Failed to fetch areas: ${error.message}`)
+          toast.error(`Failed to fetch areas: ${error.message}`)
           return
         }
         
@@ -274,7 +275,7 @@ export default function ArchivePage() {
       setAvailableAreas(uniqueAreas)
     } catch (err) {
       console.error("Error fetching areas:", err)
-      setError(`Failed to fetch areas: ${formatError(err) || 'Unknown error'}`)
+      toast.error(`Failed to fetch areas: ${formatError(err) || 'Unknown error'}`)
     } finally {
       setLoadingAreas(false)
     }
@@ -301,7 +302,7 @@ export default function ArchivePage() {
     
     // Validate file type
     if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
-      setError("Please upload an Excel file (.xlsx or .xls)")
+      toast.error("Please upload an Excel file (.xlsx or .xls)")
       return
     }
     
@@ -341,7 +342,7 @@ export default function ArchivePage() {
     } catch (err: unknown) {
       console.error("Error uploading file:", err)
       const message = formatError(err) || "Failed to upload file"
-      setError(message)
+      toast.error(message)
     } finally {
       setUploading(false)
       // Reset file input
@@ -445,7 +446,7 @@ export default function ArchivePage() {
     } catch (err: unknown) {
       console.error("Error deleting properties:", err)
       const message = formatError(err) || "Failed to delete properties"
-      setError(message)
+      toast.error(message)
     } finally {
       setIsDeleting(false)
     }

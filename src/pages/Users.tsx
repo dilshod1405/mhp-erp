@@ -39,6 +39,7 @@ import type { Employee } from "@/types/auth"
 import { uploadAvatar } from "@/lib/storage"
 import { supabase } from "@/lib/supabase"
 import { TableSkeleton } from "@/components/shared/TableSkeleton"
+import { toast } from "sonner"
 import { formatError } from "@/lib/error-formatter"
 import { 
   canEditEmployees, 
@@ -163,7 +164,7 @@ export default function UsersPage() {
       setUsers(usersWithNullRole)
     } catch (err) {
       const errorMessage = formatError(err) || "Failed to fetch users"
-      setError(errorMessage)
+      toast.error(errorMessage)
       console.error("Error fetching users:", err)
     } finally {
       setLoading(false)
@@ -179,7 +180,7 @@ export default function UsersPage() {
 
     // Check permissions after auth is loaded
     if (!canView) {
-      setError("You don't have permission to view users")
+      toast.error("You don't have permission to view users")
       setLoading(false)
       return
     }
@@ -268,7 +269,7 @@ export default function UsersPage() {
       await fetchUsers(searchQuery, currentPage)
     } catch (err) {
       const errorMessage = formatError(err) || "Failed to delete user"
-      setError(errorMessage)
+      toast.error(errorMessage)
       console.error("Error deleting user:", err)
     } finally {
       setDeletingUserId(null)
@@ -280,18 +281,17 @@ export default function UsersPage() {
     if (file) {
       // Validate file type
       if (!file.type.startsWith('image/')) {
-        setError('Please select an image file')
+        toast.error('Please select an image file')
         return
       }
       
       // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
-        setError('Image size must be less than 5MB')
+        toast.error('Image size must be less than 5MB')
         return
       }
 
       setAvatarFile(file)
-      setError(null)
       
       // Create preview
       const reader = new FileReader()
@@ -307,11 +307,9 @@ export default function UsersPage() {
 
     try {
       setIsSaving(true)
-      setError(null)
-
       // Validate email format (only if email is provided and not empty)
       if (formData.email && formData.email.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-        setError('Please enter a valid email address')
+        toast.error('Please enter a valid email address')
         setIsSaving(false)
         return
       }
@@ -322,7 +320,7 @@ export default function UsersPage() {
           user => user.email && user.email.trim() !== '' && user.email === formData.email && user.user_id !== editingUser.user_id
         )
         if (duplicateUser) {
-          setError(`Email "${formData.email}" is already in use by another user`)
+          toast.error(`Email "${formData.email}" is already in use by another user`)
           setIsSaving(false)
           return
         }
@@ -420,9 +418,10 @@ export default function UsersPage() {
       setAvatarFile(null)
       setAvatarPreview(null)
       await fetchUsers(searchQuery, currentPage)
+      toast.success("User updated successfully")
     } catch (err) {
       const errorMessage = formatError(err) || "Failed to update user"
-      setError(errorMessage)
+      toast.error(errorMessage)
       console.error("Error updating user:", err)
     } finally {
       setIsSaving(false)
@@ -432,25 +431,23 @@ export default function UsersPage() {
   const handleSaveAdd = async () => {
     try {
       setIsSaving(true)
-      setError(null)
-
       // Validate required fields
       if (!formData.full_name || !formData.email || !formData.password) {
-        setError('Full name, email, and password are required')
+        toast.error('Full name, email, and password are required')
         setIsSaving(false)
         return
       }
 
       // Validate password strength
       if (formData.password.length < 6) {
-        setError('Password must be at least 6 characters long')
+        toast.error('Password must be at least 6 characters long')
         setIsSaving(false)
         return
       }
 
       // Validate email format
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-        setError('Please enter a valid email address')
+        toast.error('Please enter a valid email address')
         setIsSaving(false)
         return
       }
@@ -461,7 +458,7 @@ export default function UsersPage() {
           user => user.email && user.email.trim() !== '' && user.email === formData.email
         )
         if (duplicateUser) {
-          setError(`Email "${formData.email}" is already in use by another user`)
+          toast.error(`Email "${formData.email}" is already in use by another user`)
           setIsSaving(false)
           return
         }
@@ -496,7 +493,7 @@ export default function UsersPage() {
           errorMessage = `Email "${formData.email}" is already in use. Please use a different email address.`
         }
         
-        setError(errorMessage)
+        toast.error(errorMessage)
         setIsSaving(false)
         return
       }
@@ -517,9 +514,10 @@ export default function UsersPage() {
       })
       setIsSaving(false)
       await fetchUsers(searchQuery, currentPage)
+      toast.success("User created successfully")
     } catch (err) {
       const errorMessage = formatError(err) || "Failed to add user"
-      setError(errorMessage)
+      toast.error(errorMessage)
       console.error("Error adding user:", err)
       setIsSaving(false)
     }

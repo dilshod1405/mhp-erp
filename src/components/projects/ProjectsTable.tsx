@@ -39,7 +39,7 @@ export function ProjectsTable({
       <Table className="min-w-full">
         <TableHeader>
           <TableRow>
-            <TableHead>Slug</TableHead>
+            <TableHead>Title</TableHead>
             <TableHead>Developer</TableHead>
             <TableHead>Area</TableHead>
             <TableHead>Price</TableHead>
@@ -59,7 +59,7 @@ export function ProjectsTable({
           ) : (
             projects.map((project) => (
               <TableRow key={project.id}>
-                <TableCell className="font-medium">{project.slug}</TableCell>
+                <TableCell className="font-medium">{project.title || project.slug}</TableCell>
                 <TableCell>{getDeveloperName(project.developer_id)}</TableCell>
                 <TableCell>{getAreaName(project.area_id)}</TableCell>
                 <TableCell>{formatPrice(project.price)}</TableCell>

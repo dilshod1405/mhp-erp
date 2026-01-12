@@ -22,6 +22,7 @@ import { SearchBar } from "@/components/shared/SearchBar"
 import { TableSkeleton } from "@/components/shared/TableSkeleton"
 import { Pagination } from "@/components/shared/Pagination"
 import { formatError } from "@/lib/error-formatter"
+import { toast } from "sonner"
 import { useAuth } from "@/contexts/AuthContext"
 import { canEditProjects } from "@/config/roles"
 import { 
@@ -29,7 +30,7 @@ import {
   SLUG_TO_PROJECT_TYPE,
   type ProjectType 
 } from "@/config/project-types"
-import type { Project } from "@/types/project"
+import type { Project, ProjectMedia, ProjectTravelTime, ProjectPaymentPlan } from "@/types/project"
 import type { Developer } from "@/types/developer"
 import type { Area } from "@/types/area"
 
@@ -64,6 +65,7 @@ export default function ProjectsPage() {
   const itemsPerPage = 10
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [formData, setFormData] = useState({
+    title: "",
     slug: "",
     developer_id: "",
     area_id: "",
@@ -75,11 +77,17 @@ export default function ProjectsPage() {
     type: projectType || "Off Plan" as ProjectType,
   })
   const [projectFiles, setProjectFiles] = useState({
-    image: null as File | null,
-    video: null as File | null,
+    images: [] as File[],
+    videos: [] as File[],
     brochure: null as File | null,
     floorPlan: null as File | null,
   })
+  const [existingMedia, setExistingMedia] = useState<ProjectMedia[]>([])
+  const [mediaToDelete, setMediaToDelete] = useState<number[]>([])
+  const [travelTimes, setTravelTimes] = useState<ProjectTravelTime[]>([])
+  const [travelTimesToDelete, setTravelTimesToDelete] = useState<number[]>([])
+  const [paymentPlans, setPaymentPlans] = useState<ProjectPaymentPlan[]>([])
+  const [paymentPlansToDelete, setPaymentPlansToDelete] = useState<number[]>([])
 
   // RBAC: IT, CEO, Admin (roles 0, 1, 2) can CRUD; other roles can view only
   const canEdit = canEditProjects(employee?.role)
@@ -107,8 +115,8 @@ export default function ProjectsPage() {
       // Add search filter if search term exists
       if (searchTerm && searchTerm.trim()) {
         const searchPattern = `*${searchTerm.trim()}*`
-        // Search by slug
-        url += `&slug.ilike.${encodeURIComponent(searchPattern)}`
+        // Search by title or slug
+        url += `&or=(title.ilike.${encodeURIComponent(searchPattern)},slug.ilike.${encodeURIComponent(searchPattern)})`
       }
       
       // Add developer filter
@@ -153,7 +161,7 @@ export default function ProjectsPage() {
     } catch (err: unknown) {
       console.error("Error fetching projects:", err)
       const message = formatError(err) || "Failed to fetch projects"
-      setError(message)
+      toast.error(message)
     } finally {
       setLoading(false)
     }
@@ -309,9 +317,10 @@ export default function ProjectsPage() {
 
   const totalPages = Math.ceil(totalCount / itemsPerPage)
 
-  const handleEdit = (project: Project) => {
+  const handleEdit = async (project: Project) => {
     setEditingProject(project)
     setFormData({
+      title: project.title || "",
       slug: project.slug || "",
       developer_id: project.developer_id?.toString() || "",
       area_id: project.area_id?.toString() || "",
@@ -322,6 +331,54 @@ export default function ProjectsPage() {
       file_floor_plan: project.file_floor_plan || "",
       type: project.type || "Off Plan",
     })
+    setMediaToDelete([])
+    setTravelTimesToDelete([])
+    setPaymentPlansToDelete([])
+    
+    // Fetch existing project data in parallel for better performance
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+    
+    const headers = {
+      'apikey': supabaseAnonKey,
+      'Authorization': `Bearer ${supabaseAnonKey}`,
+    }
+    
+    try {
+      const [mediaResponse, travelTimesResponse, paymentPlansResponse] = await Promise.all([
+        axios.get(
+          `${supabaseUrl}/rest/v1/project_media?project_id=eq.${project.id}&order=created_at.asc`,
+          { headers }
+        ).catch(err => {
+          console.warn("Could not fetch project media:", err)
+          return { data: [] }
+        }),
+        axios.get(
+          `${supabaseUrl}/rest/v1/project_travel_time?project_id=eq.${project.id}&select=*`,
+          { headers }
+        ).catch(err => {
+          console.warn("Could not fetch travel times:", err)
+          return { data: [] }
+        }),
+        axios.get(
+          `${supabaseUrl}/rest/v1/project_payment_plan?project_id=eq.${project.id}&select=*`,
+          { headers }
+        ).catch(err => {
+          console.warn("Could not fetch payment plans:", err)
+          return { data: [] }
+        }),
+      ])
+      
+      setExistingMedia(mediaResponse.data || [])
+      setTravelTimes(travelTimesResponse.data || [])
+      setPaymentPlans(paymentPlansResponse.data || [])
+    } catch (err) {
+      console.error("Error fetching project data:", err)
+      setExistingMedia([])
+      setTravelTimes([])
+      setPaymentPlans([])
+    }
+    
     setIsAddDialogOpen(false)
     setIsDialogOpen(true)
   }
@@ -329,6 +386,7 @@ export default function ProjectsPage() {
   const handleAdd = () => {
     setEditingProject(null)
     setFormData({
+      title: "",
       slug: "",
       developer_id: "",
       area_id: "",
@@ -340,13 +398,17 @@ export default function ProjectsPage() {
       type: projectType || "Off Plan",
     })
     setProjectFiles({
-      image: null,
-      video: null,
+      images: [],
+      videos: [],
       brochure: null,
       floorPlan: null,
     })
-    setIsDialogOpen(false)
-    setIsAddDialogOpen(true)
+      setTravelTimes([])
+      setTravelTimesToDelete([])
+      setPaymentPlans([])
+      setPaymentPlansToDelete([])
+      setIsDialogOpen(false)
+      setIsAddDialogOpen(true)
   }
 
   const handleDelete = async (projectId: number) => {
@@ -354,7 +416,58 @@ export default function ProjectsPage() {
 
     try {
       setDeletingProjectId(projectId)
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
+      // Delete related travel times first (cascade)
+      try {
+        await axios.delete(
+          `${supabaseUrl}/rest/v1/project_travel_time?project_id=eq.${projectId}`,
+          {
+            headers: {
+              "apikey": supabaseAnonKey,
+              "Authorization": `Bearer ${supabaseAnonKey}`,
+              "Content-Type": "application/json",
+            },
+          }
+        )
+      } catch (err) {
+        console.warn("Could not delete travel times (may not exist):", err)
+      }
+
+      // Delete related project_media first
+      try {
+        await axios.delete(
+          `${supabaseUrl}/rest/v1/project_media?project_id=eq.${projectId}`,
+          {
+            headers: {
+              "apikey": supabaseAnonKey,
+              "Authorization": `Bearer ${supabaseAnonKey}`,
+              "Content-Type": "application/json",
+            },
+          }
+        )
+      } catch (err) {
+        console.warn("Could not delete project media (may not exist):", err)
+      }
+
+      // Delete related payment plans
+      try {
+        await axios.delete(
+          `${supabaseUrl}/rest/v1/project_payment_plan?project_id=eq.${projectId}`,
+          {
+            headers: {
+              "apikey": supabaseAnonKey,
+              "Authorization": `Bearer ${supabaseAnonKey}`,
+              "Content-Type": "application/json",
+            },
+          }
+        )
+      } catch (err) {
+        console.warn("Could not delete payment plans (may not exist):", err)
+      }
+
+      // Delete the project
       await axios.delete(
         `${supabaseUrl}/rest/v1/project?id=eq.${projectId}`,
         {
@@ -374,10 +487,11 @@ export default function ProjectsPage() {
         appliedFilterPriceMin,
         appliedFilterPriceMax
       )
+      toast.success("Project deleted successfully")
     } catch (err: unknown) {
       console.error("Error deleting project:", err)
       const message = formatError(err) || "Failed to delete project"
-      setError(message)
+      toast.error(message)
     } finally {
       setDeletingProjectId(null)
     }
@@ -417,24 +531,24 @@ export default function ProjectsPage() {
   }
 
   const handleSave = async () => {
-    if (!formData.slug.trim()) {
-      setError("Slug is required")
+    if (!formData.title.trim()) {
+      toast.error("Title is required")
       return
     }
 
-    // Validate image is required for new projects
-    if (!editingProject && !projectFiles.image) {
-      setError("Image is required")
+    // Validate at least one image is required for new projects
+    if (!editingProject && projectFiles.images.length === 0) {
+      toast.error("At least one image is required")
       return
     }
 
     try {
       setIsSaving(true)
-      setError(null)
 
       if (editingProject) {
-        // Update existing project - for now, skip file uploads on edit
+        // Update existing project
         const projectData: Record<string, unknown> = {
+          title: formData.title.trim(),
           slug: formData.slug.trim(),
           type: formData.type,
           developer_id: formData.developer_id ? parseInt(formData.developer_id) : null,
@@ -458,12 +572,295 @@ export default function ProjectsPage() {
             },
           }
         )
+
+        const projectId = editingProject.id
+
+        // Delete marked media
+        if (mediaToDelete.length > 0) {
+          for (const mediaId of mediaToDelete) {
+            try {
+              await axios.delete(
+                `${supabaseUrl}/rest/v1/project_media?id=eq.${mediaId}`,
+                {
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${supabaseAnonKey}`,
+                    'apikey': supabaseAnonKey,
+                  },
+                }
+              )
+              console.log(`Project media ${mediaId} deleted successfully`)
+            } catch (err) {
+              console.warn(`Could not delete project media ${mediaId}:`, err)
+            }
+          }
+        }
+
+        // Delete marked travel times
+        if (travelTimesToDelete.length > 0) {
+          for (const travelTimeId of travelTimesToDelete) {
+            try {
+              await axios.delete(
+                `${supabaseUrl}/rest/v1/project_travel_time?id=eq.${travelTimeId}`,
+                {
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${supabaseAnonKey}`,
+                    'apikey': supabaseAnonKey,
+                  },
+                }
+              )
+              console.log(`Travel time ${travelTimeId} deleted successfully`)
+            } catch (err) {
+              console.warn(`Could not delete travel time ${travelTimeId}:`, err)
+            }
+          }
+        }
+
+        // Create/Update travel times
+        // New travel times have large temporary IDs (Date.now()), existing ones have real database IDs
+        // Create new travel times (those with temporary IDs from Date.now() >= 1000000)
+        const newTravelTimes = travelTimes.filter(tt => 
+          !travelTimesToDelete.includes(tt.id) && 
+          tt.id >= 1000000 // Temporary IDs are large numbers (Date.now())
+        )
+        for (const travelTime of newTravelTimes) {
+          try {
+            await axios.post(
+              `${supabaseUrl}/rest/v1/project_travel_time`,
+              {
+                project_id: projectId,
+                minutes: travelTime.minutes,
+                icon: travelTime.icon,
+              },
+              {
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${supabaseAnonKey}`,
+                  'apikey': supabaseAnonKey,
+                  'Prefer': 'return=representation',
+                },
+              }
+            )
+            console.log(`Travel time created successfully: ${travelTime.icon} - ${travelTime.minutes} minutes`)
+          } catch (err) {
+            console.warn(`Could not create travel time:`, err)
+          }
+        }
+
+        // Update existing travel times (those fetched from database with real IDs < 1000000)
+        const existingTravelTimes = travelTimes.filter(tt => 
+          !travelTimesToDelete.includes(tt.id) && 
+          tt.id < 1000000 // Real database IDs are small numbers
+        )
+        for (const travelTime of existingTravelTimes) {
+          try {
+            await axios.patch(
+              `${supabaseUrl}/rest/v1/project_travel_time?id=eq.${travelTime.id}`,
+              {
+                minutes: travelTime.minutes,
+                icon: travelTime.icon,
+              },
+              {
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${supabaseAnonKey}`,
+                  'apikey': supabaseAnonKey,
+                  'Prefer': 'return=representation',
+                },
+              }
+            )
+            console.log(`Travel time ${travelTime.id} updated successfully`)
+          } catch (err) {
+            console.warn(`Could not update travel time ${travelTime.id}:`, err)
+          }
+        }
+
+        // Delete marked payment plans
+        if (paymentPlansToDelete.length > 0) {
+          for (const paymentPlanId of paymentPlansToDelete) {
+            try {
+              await axios.delete(
+                `${supabaseUrl}/rest/v1/project_payment_plan?id=eq.${paymentPlanId}`,
+                {
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${supabaseAnonKey}`,
+                    'apikey': supabaseAnonKey,
+                  },
+                }
+              )
+              console.log(`Payment plan ${paymentPlanId} deleted successfully`)
+            } catch (err) {
+              console.warn(`Could not delete payment plan ${paymentPlanId}:`, err)
+            }
+          }
+        }
+
+        // Create/Update payment plans
+        // New payment plans have large temporary IDs (Date.now()), existing ones have real database IDs
+        // Create new payment plans (those with temporary IDs from Date.now() >= 1000000)
+        const newPaymentPlans = paymentPlans.filter(pp => 
+          !paymentPlansToDelete.includes(pp.id) && 
+          pp.id >= 1000000 // Temporary IDs are large numbers (Date.now())
+        )
+        for (const paymentPlan of newPaymentPlans) {
+          try {
+            await axios.post(
+              `${supabaseUrl}/rest/v1/project_payment_plan`,
+              {
+                project_id: projectId,
+                title: paymentPlan.title || '',
+                percentage: paymentPlan.percentage,
+              },
+              {
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${supabaseAnonKey}`,
+                  'apikey': supabaseAnonKey,
+                  'Prefer': 'return=representation',
+                },
+              }
+            )
+            console.log(`Payment plan created successfully: ${paymentPlan.percentage}%`)
+          } catch (err) {
+            console.warn(`Could not create payment plan:`, err)
+          }
+        }
+
+        // Update existing payment plans (those fetched from database with real IDs < 1000000)
+        const existingPaymentPlans = paymentPlans.filter(pp => 
+          !paymentPlansToDelete.includes(pp.id) && 
+          pp.id < 1000000 // Real database IDs are small numbers
+        )
+        for (const paymentPlan of existingPaymentPlans) {
+          try {
+            await axios.patch(
+              `${supabaseUrl}/rest/v1/project_payment_plan?id=eq.${paymentPlan.id}`,
+              {
+                title: paymentPlan.title || '',
+                percentage: paymentPlan.percentage,
+              },
+              {
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${supabaseAnonKey}`,
+                  'apikey': supabaseAnonKey,
+                  'Prefer': 'return=representation',
+                },
+              }
+            )
+            console.log(`Payment plan ${paymentPlan.id} updated successfully`)
+          } catch (err) {
+            console.warn(`Could not update payment plan ${paymentPlan.id}:`, err)
+          }
+        }
+
+        // Handle file uploads for editing
+        let brochurePath: string | null = null
+        let floorPlanPath: string | null = null
+
+        // Upload new brochure if provided
+        if (projectFiles.brochure) {
+          brochurePath = await uploadProjectFile(projectFiles.brochure, projectId, 'files')
+          console.log("Brochure uploaded successfully:", brochurePath)
+          
+          // Update project with new brochure path
+          await axios.patch(
+            `${supabaseUrl}/rest/v1/project?id=eq.${projectId}`,
+            { file_brochure: brochurePath },
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseAnonKey}`,
+                'apikey': supabaseAnonKey,
+                'Prefer': 'return=representation',
+              },
+            }
+          )
+        }
+
+        // Upload new floor plan if provided
+        if (projectFiles.floorPlan) {
+          floorPlanPath = await uploadProjectFile(projectFiles.floorPlan, projectId, 'files')
+          console.log("Floor plan uploaded successfully:", floorPlanPath)
+          
+          // Update project with new floor plan path
+          await axios.patch(
+            `${supabaseUrl}/rest/v1/project?id=eq.${projectId}`,
+            { file_floor_plan: floorPlanPath },
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseAnonKey}`,
+                'apikey': supabaseAnonKey,
+                'Prefer': 'return=representation',
+              },
+            }
+          )
+        }
+
+        // Upload images and videos, then pair them: 1 image + 1 video = 1 project_media row
+        if (projectFiles.images.length > 0 || projectFiles.videos.length > 0) {
+          const maxCount = Math.max(projectFiles.images.length, projectFiles.videos.length)
+          
+          for (let i = 0; i < maxCount; i++) {
+            try {
+              let imagePath: string | null = null
+              let videoPath: string | null = null
+
+              // Upload image if available at this index
+              if (i < projectFiles.images.length) {
+                imagePath = await uploadProjectFile(projectFiles.images[i], projectId, 'images')
+                console.log(`Image ${i + 1} uploaded successfully:`, imagePath)
+              }
+
+              // Upload video if available at this index
+              if (i < projectFiles.videos.length) {
+                videoPath = await uploadProjectFile(projectFiles.videos[i], projectId, 'videos')
+                console.log(`Video ${i + 1} uploaded successfully:`, videoPath)
+              }
+
+              // Create project_media record with paired image and video (or single if only one exists)
+              if (imagePath || videoPath) {
+                const mediaData: { project_id: number; image?: string | null; video?: string | null } = {
+                  project_id: projectId,
+                }
+                
+                if (imagePath) {
+                  mediaData.image = imagePath
+                }
+                
+                if (videoPath) {
+                  mediaData.video = videoPath
+                }
+
+                await axios.post(
+                  `${supabaseUrl}/rest/v1/project_media`,
+                  mediaData,
+                  {
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${supabaseAnonKey}`,
+                      'apikey': supabaseAnonKey,
+                      'Prefer': 'return=representation',
+                    },
+                  }
+                )
+                console.log(`Project media record ${i + 1} created with image: ${imagePath || 'none'}, video: ${videoPath || 'none'}`)
+              }
+            } catch (err) {
+              console.warn(`Could not upload files or create project_media record for pair ${i + 1}:`, err)
+            }
+          }
+        }
       } else {
         // Create project first using direct fetch with anon key (like Areas.tsx)
+        // Server will generate slug from title, so we don't send slug
         const projectData = {
+          title: formData.title.trim(),
           developer_id: formData.developer_id ? parseInt(formData.developer_id) : null,
           area_id: formData.area_id ? parseInt(formData.area_id) : null,
-          slug: formData.slug.trim(),
           type: formData.type,
           price: formData.price ? parseFloat(formData.price) : null,
           latitude: formData.latitude ? parseFloat(formData.latitude) : null,
@@ -497,19 +894,58 @@ export default function ProjectsPage() {
         // Upload files
         let brochurePath: string | null = null
         let floorPlanPath: string | null = null
-        let imagePath: string | null = null
-        let videoPath: string | null = null
 
-        // Upload image (required)
-        if (projectFiles.image) {
-          imagePath = await uploadProjectFile(projectFiles.image, projectId, 'images')
-          console.log("Image uploaded successfully:", imagePath)
-        }
+        // Upload images and videos, then pair them: 1 image + 1 video = 1 project_media row
+        const maxCount = Math.max(projectFiles.images.length, projectFiles.videos.length)
+        
+        for (let i = 0; i < maxCount; i++) {
+          try {
+            let imagePath: string | null = null
+            let videoPath: string | null = null
 
-        // Upload video (optional)
-        if (projectFiles.video) {
-          videoPath = await uploadProjectFile(projectFiles.video, projectId, 'videos')
-          console.log("Video uploaded successfully:", videoPath)
+            // Upload image if available at this index
+            if (i < projectFiles.images.length) {
+              imagePath = await uploadProjectFile(projectFiles.images[i], projectId, 'images')
+              console.log(`Image ${i + 1} uploaded successfully:`, imagePath)
+            }
+
+            // Upload video if available at this index
+            if (i < projectFiles.videos.length) {
+              videoPath = await uploadProjectFile(projectFiles.videos[i], projectId, 'videos')
+              console.log(`Video ${i + 1} uploaded successfully:`, videoPath)
+            }
+
+            // Create project_media record with paired image and video (or single if only one exists)
+            if (imagePath || videoPath) {
+              const mediaData: { project_id: number; image?: string | null; video?: string | null } = {
+                project_id: projectId,
+              }
+              
+              if (imagePath) {
+                mediaData.image = imagePath
+              }
+              
+              if (videoPath) {
+                mediaData.video = videoPath
+              }
+
+              await axios.post(
+                `${supabaseUrl}/rest/v1/project_media`,
+                mediaData,
+                {
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${supabaseAnonKey}`,
+                    'apikey': supabaseAnonKey,
+                    'Prefer': 'return=representation',
+                  },
+                }
+              )
+              console.log(`Project media record ${i + 1} created with image: ${imagePath || 'none'}, video: ${videoPath || 'none'}`)
+            }
+          } catch (err) {
+            console.warn(`Could not upload files or create project_media record for pair ${i + 1}:`, err)
+          }
         }
 
         // Upload brochure (optional)
@@ -522,6 +958,56 @@ export default function ProjectsPage() {
         if (projectFiles.floorPlan) {
           floorPlanPath = await uploadProjectFile(projectFiles.floorPlan, projectId, 'files')
           console.log("Floor plan uploaded successfully:", floorPlanPath)
+        }
+
+        // Create travel times
+        for (const travelTime of travelTimes) {
+          try {
+            await axios.post(
+              `${supabaseUrl}/rest/v1/project_travel_time`,
+              {
+                project_id: projectId,
+                minutes: travelTime.minutes,
+                icon: travelTime.icon,
+              },
+              {
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${supabaseAnonKey}`,
+                  'apikey': supabaseAnonKey,
+                  'Prefer': 'return=representation',
+                },
+              }
+            )
+            console.log(`Travel time created successfully: ${travelTime.icon} - ${travelTime.minutes} minutes`)
+          } catch (err) {
+            console.warn(`Could not create travel time:`, err)
+          }
+        }
+
+        // Create payment plans
+        for (const paymentPlan of paymentPlans) {
+          try {
+            await axios.post(
+              `${supabaseUrl}/rest/v1/project_payment_plan`,
+              {
+                project_id: projectId,
+                title: paymentPlan.title || '',
+                percentage: paymentPlan.percentage,
+              },
+              {
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${supabaseAnonKey}`,
+                  'apikey': supabaseAnonKey,
+                  'Prefer': 'return=representation',
+                },
+              }
+            )
+            console.log(`Payment plan created successfully: ${paymentPlan.title || 'Untitled'} - ${paymentPlan.percentage}%`)
+          } catch (err) {
+            console.warn(`Could not create payment plan:`, err)
+          }
         }
 
         // Update project with file paths (brochure and floor plan)
@@ -552,63 +1038,20 @@ export default function ProjectsPage() {
           console.log("Verification - file_brochure:", project?.file_brochure)
           console.log("Verification - file_floor_plan:", project?.file_floor_plan)
         }
-
-        // Create project_media records for images/videos (separate records for each)
-        if (imagePath) {
-          try {
-            await axios.post(
-              `${supabaseUrl}/rest/v1/project_media`,
-              {
-                project_id: projectId,
-                image: imagePath,
-              },
-              {
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${supabaseAnonKey}`,
-                  'apikey': supabaseAnonKey,
-                  'Prefer': 'return=representation',
-                },
-              }
-            )
-            console.log("Project media record created for image:", imagePath)
-          } catch (err) {
-            console.warn("Could not create project_media record for image:", err)
-          }
-        }
-
-        if (videoPath) {
-          try {
-            await axios.post(
-              `${supabaseUrl}/rest/v1/project_media`,
-              {
-                project_id: projectId,
-                video: videoPath,
-              },
-              {
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${supabaseAnonKey}`,
-                  'apikey': supabaseAnonKey,
-                  'Prefer': 'return=representation',
-                },
-              }
-            )
-            console.log("Project media record created for video:", videoPath)
-          } catch (err) {
-            console.warn("Could not create project_media record for video:", err)
-          }
-        }
       }
 
       setIsDialogOpen(false)
       setIsAddDialogOpen(false)
       setProjectFiles({
-        image: null,
-        video: null,
+        images: [],
+        videos: [],
         brochure: null,
         floorPlan: null,
       })
+      setExistingMedia([])
+      setMediaToDelete([])
+      setTravelTimes([])
+      setTravelTimesToDelete([])
       await fetchProjects(
         searchQuery, 
         currentPage,
@@ -617,10 +1060,11 @@ export default function ProjectsPage() {
         appliedFilterPriceMin,
         appliedFilterPriceMax
       )
+      toast.success(editingProject ? "Project updated successfully" : "Project created successfully")
     } catch (err: unknown) {
       console.error("Error saving project:", err)
       const message = formatError(err) || "Failed to save project"
-      setError(message)
+      toast.error(message)
     } finally {
       setIsSaving(false)
     }
@@ -781,8 +1225,19 @@ export default function ProjectsPage() {
         projectType={projectType}
         developers={developers}
         areas={areas}
+        existingMedia={existingMedia}
+        mediaToDelete={mediaToDelete}
+        travelTimes={travelTimes}
+        travelTimesToDelete={travelTimesToDelete}
+        paymentPlans={paymentPlans}
+        paymentPlansToDelete={paymentPlansToDelete}
         onFormDataChange={setFormData}
         onProjectFilesChange={setProjectFiles}
+        onMediaToDeleteChange={setMediaToDelete}
+        onTravelTimesChange={setTravelTimes}
+        onTravelTimesToDeleteChange={setTravelTimesToDelete}
+        onPaymentPlansChange={setPaymentPlans}
+        onPaymentPlansToDeleteChange={setPaymentPlansToDelete}
         onSave={handleSave}
       />
 
@@ -797,8 +1252,12 @@ export default function ProjectsPage() {
         projectType={projectType}
         developers={developers}
         areas={areas}
+        travelTimes={travelTimes}
+        paymentPlans={paymentPlans}
         onFormDataChange={setFormData}
         onProjectFilesChange={setProjectFiles}
+        onTravelTimesChange={setTravelTimes}
+        onPaymentPlansChange={setPaymentPlans}
         onSave={handleSave}
       />
       </div>

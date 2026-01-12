@@ -55,6 +55,7 @@ import { format } from "date-fns"
 import type { Developer } from "@/types/developer"
 import { CardSkeleton } from "@/components/shared/CardSkeleton"
 import { formatError } from "@/lib/error-formatter"
+import { toast } from "sonner"
 
 export default function DevelopersPage() {
   const { employee } = useAuth()
@@ -139,7 +140,7 @@ export default function DevelopersPage() {
       setDevelopers(response.data || [])
     } catch (err: any) {
       console.error("Error fetching developers:", err)
-      setError(formatError(err) || "Failed to fetch developers")
+      toast.error(formatError(err) || "Failed to fetch developers")
     } finally {
       setLoading(false)
     }
@@ -147,7 +148,7 @@ export default function DevelopersPage() {
 
   useEffect(() => {
     if (!canView) {
-      setError("You don't have permission to view developers")
+      toast.error("You don't have permission to view developers")
       setLoading(false)
       return
     }
@@ -161,7 +162,7 @@ export default function DevelopersPage() {
     const file = e.target.files?.[0]
     if (file) {
       if (!file.type.startsWith('image/')) {
-        alert("Please select an image file")
+        toast.error("Please select an image file")
         return
       }
       setLogoFile(file)
@@ -217,10 +218,11 @@ export default function DevelopersPage() {
       )
 
       await fetchDevelopers(currentPage)
+      toast.success("Developer deleted successfully")
     } catch (err: any) {
       console.error("Error deleting developer:", err)
       const message = formatError(err) || "Failed to delete developer. Please try again."
-      alert(message)
+      toast.error(message)
     } finally {
       setDeletingDeveloperId(null)
     }
@@ -228,7 +230,7 @@ export default function DevelopersPage() {
 
   const handleSave = async () => {
     if (!formData.title.trim() || !foundationDate) {
-      alert("Please fill in all required fields")
+      toast.error("Please fill in all required fields")
       return
     }
 
@@ -291,10 +293,11 @@ export default function DevelopersPage() {
       setIsDialogOpen(false)
       setIsAddDialogOpen(false)
       await fetchDevelopers(currentPage)
+      toast.success(editingDeveloper ? "Developer updated successfully" : "Developer created successfully")
     } catch (err: any) {
       console.error("Error saving developer:", err)
       const message = formatError(err) || "Failed to save developer"
-      alert(message)
+      toast.error(message)
     } finally {
       setIsSaving(false)
     }

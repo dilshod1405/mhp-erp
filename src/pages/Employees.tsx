@@ -40,6 +40,7 @@ import { uploadAvatar } from "@/lib/storage"
 import { supabase } from "@/lib/supabase"
 import { TableSkeleton } from "@/components/shared/TableSkeleton"
 import { formatError } from "@/lib/error-formatter"
+import { toast } from "sonner"
 import { 
   canEditEmployees, 
   canViewEmployees, 
@@ -169,7 +170,7 @@ export default function EmployeesPage() {
       setEmployees(filteredEmployees)
     } catch (err) {
       const errorMessage = formatError(err) || "Failed to fetch employees"
-      setError(errorMessage)
+      toast.error(errorMessage)
       console.error("Error fetching employees:", err)
     } finally {
       setLoading(false)
@@ -185,7 +186,7 @@ export default function EmployeesPage() {
 
     // Check permissions after auth is loaded
     if (!canView) {
-      setError("You don't have permission to view employees")
+      toast.error("You don't have permission to view employees")
       setLoading(false)
       return
     }
@@ -232,18 +233,17 @@ export default function EmployeesPage() {
     if (file) {
       // Validate file type
       if (!file.type.startsWith('image/')) {
-        setError('Please select an image file')
+        toast.error('Please select an image file')
         return
       }
       
       // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
-        setError('Image size must be less than 5MB')
+        toast.error('Image size must be less than 5MB')
         return
       }
 
       setAvatarFile(file)
-      setError(null)
       
       // Create preview
       const reader = new FileReader()
@@ -299,7 +299,7 @@ export default function EmployeesPage() {
       await fetchEmployees(searchQuery, currentPage)
     } catch (err) {
       const errorMessage = formatError(err) || "Failed to delete employee"
-      setError(errorMessage)
+      toast.error(errorMessage)
       console.error("Error deleting employee:", err)
     } finally {
       setDeletingEmployeeId(null)
@@ -311,11 +311,9 @@ export default function EmployeesPage() {
 
     try {
       setIsSaving(true)
-      setError(null)
-
       // Validate email format (only if email is provided and not empty)
       if (formData.email && formData.email.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-        setError('Please enter a valid email address')
+        toast.error('Please enter a valid email address')
         return
       }
 
@@ -325,7 +323,7 @@ export default function EmployeesPage() {
           emp => emp.email && emp.email.trim() !== '' && emp.email === formData.email && emp.user_id !== editingEmployee.user_id
         )
         if (duplicateEmployee) {
-          setError(`Email "${formData.email}" is already in use by another employee`)
+          toast.error(`Email "${formData.email}" is already in use by another employee`)
           return
         }
       }
@@ -422,9 +420,10 @@ export default function EmployeesPage() {
       setAvatarFile(null)
       setAvatarPreview(null)
       await fetchEmployees(searchQuery, currentPage)
+      toast.success("Employee updated successfully")
     } catch (err) {
       const errorMessage = formatError(err) || "Failed to update employee"
-      setError(errorMessage)
+      toast.error(errorMessage)
       console.error("Error updating employee:", err)
     } finally {
       setIsSaving(false)
@@ -434,18 +433,16 @@ export default function EmployeesPage() {
   const handleSaveAdd = async () => {
     try {
       setIsSaving(true)
-      setError(null)
-
       // Validate required fields
       if (!formData.full_name || !formData.email) {
-        setError('Full name and email are required')
+        toast.error('Full name and email are required')
         setIsSaving(false)
         return
       }
 
       // Validate email format
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-        setError('Please enter a valid email address')
+        toast.error('Please enter a valid email address')
         setIsSaving(false)
         return
       }
@@ -456,7 +453,7 @@ export default function EmployeesPage() {
           emp => emp.email && emp.email.trim() !== '' && emp.email === formData.email
         )
         if (duplicateEmployee) {
-          setError(`Email "${formData.email}" is already in use by another employee`)
+          toast.error(`Email "${formData.email}" is already in use by another employee`)
           setIsSaving(false)
           return
         }
@@ -522,9 +519,10 @@ export default function EmployeesPage() {
         role: "" as UserRole | "",
       })
       await fetchEmployees(searchQuery, currentPage)
+      toast.success("Employee created successfully")
     } catch (err) {
       const errorMessage = formatError(err) || "Failed to add employee"
-      setError(errorMessage)
+      toast.error(errorMessage)
       console.error("Error adding employee:", err)
     } finally {
       setIsSaving(false)

@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from "react-router-dom"
+import { Toaster } from "@/components/ui/sonner"
 import { AuthProvider } from "./contexts/AuthContext"
 import { ProtectedRoute } from "./components/ProtectedRoute"
 import LoginPage from "./pages/Login"
@@ -15,6 +16,7 @@ import UnauthorizedPage from "./pages/Unauthorized"
 function App() {
   return (
     <AuthProvider>
+      <Toaster position="top-right" />
       <Routes>
         {/* Public routes */}
         <Route path="/login" element={<LoginPage />} />

@@ -48,6 +48,7 @@ import { Pencil, Trash2, Plus, Search } from "lucide-react"
 import type { Contact } from "@/types/contact"
 import { TableSkeleton } from "@/components/shared/TableSkeleton"
 import { formatError } from "@/lib/error-formatter"
+import { toast } from "sonner"
 
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([])
@@ -113,7 +114,7 @@ export default function ContactsPage() {
     } catch (err: unknown) {
       console.error("Error fetching contacts:", err)
       const message = formatError(err) || "Failed to fetch contacts"
-      setError(message)
+      toast.error(message)
     } finally {
       setLoading(false)
     }
@@ -177,10 +178,11 @@ export default function ContactsPage() {
       )
 
       await fetchContacts()
+      toast.success("Contact deleted successfully")
     } catch (err: unknown) {
       console.error("Error deleting contact:", err)
       const message = formatError(err) || "Failed to delete contact"
-      alert(message)
+      toast.error(message)
     } finally {
       setDeletingContactId(null)
     }
@@ -188,15 +190,15 @@ export default function ContactsPage() {
 
   const handleSave = async () => {
     if (!formData.full_name.trim() || !formData.email.trim() || !formData.phone.trim()) {
-      alert("Please fill in all required fields")
+      toast.error("Please fill in all required fields")
       return
     }
     if (!validateEmail(formData.email)) {
-      alert("Please enter a valid email address")
+      toast.error("Please enter a valid email address")
       return
     }
     if (!validatePhone(formData.phone)) {
-      alert("Please enter a valid phone number")
+      toast.error("Please enter a valid phone number")
       return
     }
 
@@ -244,10 +246,11 @@ export default function ContactsPage() {
       setIsDialogOpen(false)
       setIsAddDialogOpen(false)
       await fetchContacts()
+      toast.success(editingContact ? "Contact updated successfully" : "Contact created successfully")
     } catch (err: unknown) {
       console.error("Error saving contact:", err)
       const message = formatError(err) || "Failed to save contact"
-      alert(message)
+      toast.error(message)
     } finally {
       setIsSaving(false)
     }

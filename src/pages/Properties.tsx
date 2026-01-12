@@ -59,6 +59,7 @@ import { canEditProperties } from "@/config/roles"
 import ArchivePage from "./Archive"
 import { TableSkeleton } from "@/components/shared/TableSkeleton"
 import { formatError } from "@/lib/error-formatter"
+import { toast } from "sonner"
 
 import type { Property, PropertyListingType } from "@/types/property"
 import type { ProjectBasic } from "@/types/project"
@@ -196,7 +197,7 @@ export default function PropertiesPage() {
     } catch (err: unknown) {
       console.error("Error fetching properties:", err)
       const message = formatError(err) || "Failed to fetch properties"
-      setError(message)
+      toast.error(message)
     } finally {
       setLoading(false)
     }
@@ -428,7 +429,7 @@ export default function PropertiesPage() {
     } catch (err: unknown) {
       console.error("Error saving property:", err)
       const message = formatError(err) || "Failed to save property"
-      setError(message)
+      toast.error(message)
     } finally {
       setIsSaving(false)
     }
@@ -459,8 +460,7 @@ export default function PropertiesPage() {
     } catch (err: unknown) {
       console.error("Error deleting property:", err)
       const message = formatError(err) || "Failed to delete property"
-      setError(message)
-      alert(message)
+      toast.error(message)
     } finally {
       setDeletingPropertyId(null)
     }

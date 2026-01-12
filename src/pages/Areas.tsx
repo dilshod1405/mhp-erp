@@ -58,6 +58,7 @@ import { CITIES } from "@/config/cities"
 import type { Area } from "@/types/area"
 import { TableSkeleton } from "@/components/shared/TableSkeleton"
 import { formatError } from "@/lib/error-formatter"
+import { toast } from "sonner"
 
 export default function AreasPage() {
   const { employee } = useAuth()
@@ -118,7 +119,7 @@ export default function AreasPage() {
       setAreas(response.data || [])
     } catch (err: any) {
       console.error("Error fetching areas:", err)
-      setError(formatError(err) || "Failed to fetch areas")
+      toast.error(formatError(err) || "Failed to fetch areas")
     } finally {
       setLoading(false)
     }
@@ -126,7 +127,7 @@ export default function AreasPage() {
 
   useEffect(() => {
     if (!canView) {
-      setError("You don't have permission to view areas")
+      toast.error("You don't have permission to view areas")
       setLoading(false)
       return
     }
@@ -179,10 +180,11 @@ export default function AreasPage() {
       )
 
       await fetchAreas(currentPage, selectedCity)
+      toast.success("Area deleted successfully")
     } catch (err: any) {
       console.error("Error deleting area:", err)
       const message = formatError(err) || "Failed to delete area. Please try again."
-      alert(message)
+      toast.error(message)
     } finally {
       setDeletingAreaId(null)
     }
@@ -190,7 +192,7 @@ export default function AreasPage() {
 
   const handleSave = async () => {
     if (!formData.title.trim() || !formData.city.trim()) {
-      alert("Please fill in all required fields")
+      toast.error("Please fill in all required fields")
       return
     }
 
@@ -236,10 +238,11 @@ export default function AreasPage() {
       setIsDialogOpen(false)
       setIsAddDialogOpen(false)
       await fetchAreas(currentPage, selectedCity)
+      toast.success(editingArea ? "Area updated successfully" : "Area created successfully")
     } catch (err: any) {
       console.error("Error saving area:", err)
       const message = formatError(err) || "Failed to save area"
-      alert(message)
+      toast.error(message)
     } finally {
       setIsSaving(false)
     }
