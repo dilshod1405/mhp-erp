@@ -534,16 +534,38 @@ export default function ProjectsPage() {
   }
 
   const handleSave = async () => {
+    // Validation for both Add and Edit Project modes (all fields required except brochure and floor plan)
     if (!formData.title.trim()) {
       toast.error("Title is required")
       return
     }
-
+    if (!formData.developer_id || formData.developer_id === "none") {
+      toast.error("Developer is required")
+      return
+    }
+    if (!formData.area_id || formData.area_id === "none") {
+      toast.error("Area is required")
+      return
+    }
+    if (!formData.type) {
+      toast.error("Type is required")
+      return
+    }
+    if (!formData.price || formData.price.trim() === "") {
+      toast.error("Price is required")
+      return
+    }
+    if (!formData.latitude || !formData.longitude || formData.latitude.trim() === "" || formData.longitude.trim() === "") {
+      toast.error("Location (latitude and longitude) is required")
+      return
+    }
     // Validate at least one image is required for new projects
     if (!editingProject && projectFiles.images.length === 0) {
       toast.error("At least one image is required")
       return
     }
+
+    console.log('handleSave called, editingProject:', editingProject?.id, 'mediaToDelete:', mediaToDelete)
 
     try {
       setIsSaving(true)
@@ -580,9 +602,10 @@ export default function ProjectsPage() {
 
         // Delete marked media
         if (mediaToDelete.length > 0) {
-          for (const mediaId of mediaToDelete) {
+          console.log(`Deleting ${mediaToDelete.length} media items:`, mediaToDelete)
+          const deletePromises = mediaToDelete.map(async (mediaId) => {
             try {
-              await axios.delete(
+              const response = await axios.delete(
                 `${supabaseUrl}/rest/v1/project_media?id=eq.${mediaId}`,
                 {
                   headers: {
@@ -592,11 +615,39 @@ export default function ProjectsPage() {
                   },
                 }
               )
-              console.log(`Project media ${mediaId} deleted successfully`)
+              console.log(`Project media ${mediaId} deleted successfully`, response.status)
+              return { success: true, mediaId }
             } catch (err) {
-              console.warn(`Could not delete project media ${mediaId}:`, err)
+              console.error(`Failed to delete project media ${mediaId}:`, err)
+              toast.error(`Failed to delete media ${mediaId}`)
+              return { success: false, mediaId, error: err }
             }
+          })
+          
+          const results = await Promise.all(deletePromises)
+          const successCount = results.filter(r => r.success).length
+          console.log(`Successfully deleted ${successCount} out of ${mediaToDelete.length} media items`)
+          
+          // Refresh media list after deletion
+          try {
+            const mediaResponse = await axios.get(
+              `${supabaseUrl}/rest/v1/project_media?project_id=eq.${projectId}&order=created_at.asc`,
+              {
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${supabaseAnonKey}`,
+                  'apikey': supabaseAnonKey,
+                },
+              }
+            )
+            console.log(`Refreshed media list: ${mediaResponse.data?.length || 0} items remaining`)
+            setExistingMedia(mediaResponse.data || [])
+            setMediaToDelete([]) // Clear deletion list after successful deletion
+          } catch (err) {
+            console.error("Failed to refresh media list after deletion:", err)
           }
+        } else {
+          console.log("No media items marked for deletion")
         }
 
         // Delete marked travel times

@@ -186,7 +186,7 @@ export function ProjectFormDialog({
             <TabsContent value="general" className="space-y-4 mt-4">
               <FieldGroup className="max-h-[60vh] overflow-y-auto">
                 <Field>
-                  <FieldLabel htmlFor={isEditing ? "title" : "add_title"}>Title *</FieldLabel>
+                  <FieldLabel htmlFor={isEditing ? "title" : "add_title"}>Title <span className="text-destructive">*</span></FieldLabel>
                   <Input
                     id={isEditing ? "title" : "add_title"}
                     value={formData.title || ""}
@@ -195,7 +195,9 @@ export function ProjectFormDialog({
                   />
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor={isEditing ? "developer" : "add_developer"}>Developer</FieldLabel>
+                  <FieldLabel htmlFor={isEditing ? "developer" : "add_developer"}>
+                    Developer <span className="text-destructive">*</span>
+                  </FieldLabel>
                   <Select
                     value={formData.developer_id || "none"}
                     onValueChange={(value) => handleFormFieldChange("developer_id", value === "none" ? "" : value)}
@@ -204,7 +206,6 @@ export function ProjectFormDialog({
                       <SelectValue placeholder="Select developer" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none" className="cursor-pointer">None</SelectItem>
                       {developers && developers.length > 0 && developers.map((dev) => (
                         <SelectItem key={dev.id} value={dev.id.toString()} className="cursor-pointer">
                           {dev.title}
@@ -214,7 +215,9 @@ export function ProjectFormDialog({
                   </Select>
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor={isEditing ? "area" : "add_area"}>Area</FieldLabel>
+                  <FieldLabel htmlFor={isEditing ? "area" : "add_area"}>
+                    Area <span className="text-destructive">*</span>
+                  </FieldLabel>
                   <Select
                     value={formData.area_id || "none"}
                     onValueChange={(value) => handleFormFieldChange("area_id", value === "none" ? "" : value)}
@@ -223,7 +226,6 @@ export function ProjectFormDialog({
                       <SelectValue placeholder="Select area" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none" className="cursor-pointer">None</SelectItem>
                       {areas && areas.length > 0 && areas.map((area) => (
                         <SelectItem key={area.id} value={area.id.toString()} className="cursor-pointer">
                           {area.title} ({area.city})
@@ -233,7 +235,7 @@ export function ProjectFormDialog({
                   </Select>
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor={isEditing ? "type" : "add_type"}>Type *</FieldLabel>
+                  <FieldLabel htmlFor={isEditing ? "type" : "add_type"}>Type <span className="text-destructive">*</span></FieldLabel>
                   <Select
                     value={formData.type || "Off Plan"}
                     onValueChange={(value) => handleFormFieldChange("type", value as ProjectType)}
@@ -251,7 +253,9 @@ export function ProjectFormDialog({
                   </Select>
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor={isEditing ? "price" : "add_price"}>Price (AED)</FieldLabel>
+                  <FieldLabel htmlFor={isEditing ? "price" : "add_price"}>
+                    Price (AED) <span className="text-destructive">*</span>
+                  </FieldLabel>
                   <Input
                     id={isEditing ? "price" : "add_price"}
                     type="number"
@@ -261,7 +265,9 @@ export function ProjectFormDialog({
                   />
                 </Field>
                 <Field>
-                  <FieldLabel>Location</FieldLabel>
+                  <FieldLabel>
+                    Location <span className="text-destructive">*</span>
+                  </FieldLabel>
                   <div className="space-y-3">
                     <LocationMap
                       latitude={formData.latitude ? parseFloat(formData.latitude) : null}
@@ -306,105 +312,17 @@ export function ProjectFormDialog({
             
             <TabsContent value="media" className="space-y-4 mt-4">
               <FieldGroup className="max-h-[60vh] overflow-y-auto">
-                {/* Existing Media Section (Edit mode only) */}
-                {isEditing && existingMedia.length > 0 && (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <FieldLabel className="text-base font-medium">
-                        Existing Media
-                      </FieldLabel>
-                      <span className="text-xs text-muted-foreground">
-                        {existingMedia.filter(m => !mediaToDelete.includes(m.id)).length} items
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-3">
-                      {existingMedia.map((media) => {
-                        const isMarkedForDelete = mediaToDelete.includes(media.id)
-                        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-                        return (
-                          <div
-                            key={media.id}
-                            className={`relative group border rounded-lg overflow-hidden bg-muted/30 ${
-                              isMarkedForDelete ? 'opacity-50 ring-2 ring-destructive' : ''
-                            }`}
-                          >
-                            {media.image ? (
-                              <div className="aspect-square relative">
-                                <img
-                                  src={media.image.startsWith('http') 
-                                    ? media.image 
-                                    : `${supabaseUrl}/storage/v1/object/public/${media.image}`}
-                                  alt="Project media"
-                                  className="w-full h-full object-cover"
-                                  onError={(e) => {
-                                    // Fallback if image fails to load
-                                    const target = e.target as HTMLImageElement
-                                    target.style.display = 'none'
-                                  }}
-                                />
-                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
-                                <Button
-                                  type="button"
-                                  variant={isMarkedForDelete ? "default" : "destructive"}
-                                  size="sm"
-                                  onClick={() => {
-                                    if (onMediaToDeleteChange) {
-                                      if (isMarkedForDelete) {
-                                        onMediaToDeleteChange(mediaToDelete.filter(id => id !== media.id))
-                                      } else {
-                                        onMediaToDeleteChange([...mediaToDelete, media.id])
-                                      }
-                                    }
-                                  }}
-                                  disabled={isSaving}
-                                  className="absolute top-2 right-2 h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
-                                >
-                                  {isMarkedForDelete ? <Plus className="h-4 w-4 rotate-45" /> : <X className="h-4 w-4" />}
-                                </Button>
-                              </div>
-                            ) : media.video ? (
-                              <div className="aspect-square relative flex items-center justify-center bg-primary/10">
-                                <Video className="h-12 w-12 text-primary" />
-                                <Button
-                                  type="button"
-                                  variant={isMarkedForDelete ? "default" : "destructive"}
-                                  size="sm"
-                                  onClick={() => {
-                                    if (onMediaToDeleteChange) {
-                                      if (isMarkedForDelete) {
-                                        onMediaToDeleteChange(mediaToDelete.filter(id => id !== media.id))
-                                      } else {
-                                        onMediaToDeleteChange([...mediaToDelete, media.id])
-                                      }
-                                    }
-                                  }}
-                                  disabled={isSaving}
-                                  className="absolute top-2 right-2 h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
-                                >
-                                  {isMarkedForDelete ? <Plus className="h-4 w-4 rotate-45" /> : <X className="h-4 w-4" />}
-                                </Button>
-                              </div>
-                            ) : null}
-                            {isMarkedForDelete && (
-                              <div className="absolute inset-0 flex items-center justify-center bg-destructive/20">
-                                <span className="text-xs font-medium text-destructive">Marked for deletion</span>
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-                
-                {/* Images Upload Section */}
+                {/* Images Section */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <FieldLabel className="text-base font-medium">
                       Images {!isEditing && <span className="text-destructive">*</span>}
                     </FieldLabel>
                     <span className="text-xs text-muted-foreground">
-                      {projectFiles.images.length} {projectFiles.images.length === 1 ? 'image' : 'images'}
+                      {isEditing 
+                        ? `${existingMedia.filter(m => !mediaToDelete.includes(m.id)).length + projectFiles.images.length} ${(existingMedia.filter(m => !mediaToDelete.includes(m.id)).length + projectFiles.images.length) === 1 ? 'image' : 'images'}`
+                        : `${projectFiles.images.length} ${projectFiles.images.length === 1 ? 'image' : 'images'}`
+                      }
                     </span>
                   </div>
                   
@@ -418,28 +336,75 @@ export function ProjectFormDialog({
                     className="hidden"
                   />
                   
-                  {projectFiles.images.length === 0 ? (
-                    <div
-                      onClick={() => triggerFileInput("images")}
-                      className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-colors"
-                    >
-                      <div className="flex flex-col items-center gap-2">
-                        <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
-                          <Upload className="h-6 w-6 text-muted-foreground" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium">Click to upload images</p>
-                          <p className="text-xs text-muted-foreground mt-1">Select one or more image files</p>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
+                  {(isEditing && existingMedia.length > 0) || projectFiles.images.length > 0 ? (
                     <div className="grid grid-cols-3 gap-3">
+                      {/* Existing Media (Edit mode only) */}
+                      {isEditing && existingMedia.map((media) => {
+                        const isMarkedForDelete = mediaToDelete.includes(media.id)
+                        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+                        return (
+                          <div
+                            key={media.id}
+                            onClick={() => {
+                              if (!isSaving && onMediaToDeleteChange) {
+                                if (isMarkedForDelete) {
+                                  const newList = mediaToDelete.filter(id => id !== media.id)
+                                  onMediaToDeleteChange(newList)
+                                } else {
+                                  const newList = [...mediaToDelete, media.id]
+                                  onMediaToDeleteChange(newList)
+                                }
+                              }
+                            }}
+                            className={`relative group border rounded-lg overflow-hidden transition-all cursor-pointer ${
+                              isMarkedForDelete 
+                                ? 'ring-2 ring-destructive border-destructive bg-destructive/10' 
+                                : 'border-border bg-muted/30 hover:border-primary/50 hover:ring-1 hover:ring-primary/20'
+                            } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            title={isMarkedForDelete ? "Click to cancel deletion" : "Click to mark for deletion"}
+                          >
+                            {media.image ? (
+                              <div className="aspect-square relative">
+                                <img
+                                  src={media.image.startsWith('http') 
+                                    ? media.image 
+                                    : `${supabaseUrl}/storage/v1/object/public/${media.image}`}
+                                  alt="Project media"
+                                  className={`w-full h-full object-cover transition-all ${
+                                    isMarkedForDelete ? 'opacity-50 grayscale' : ''
+                                  }`}
+                                  onError={(e) => {
+                                    // Fallback if image fails to load
+                                    const target = e.target as HTMLImageElement
+                                    target.style.display = 'none'
+                                  }}
+                                />
+                                {!isMarkedForDelete && (
+                                  <div className="absolute top-2 right-2 bg-destructive text-destructive-foreground rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+                                    <X className="h-4 w-4" />
+                                  </div>
+                                )}
+                              </div>
+                            ) : media.video ? (
+                              <div className="aspect-square relative flex items-center justify-center bg-primary/10">
+                                <Video className="h-12 w-12 text-primary" />
+                                {!isMarkedForDelete && (
+                                  <div className="absolute top-2 right-2 bg-destructive text-destructive-foreground rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+                                    <X className="h-4 w-4" />
+                                  </div>
+                                )}
+                              </div>
+                            ) : null}
+                          </div>
+                        )
+                      })}
+                      
+                      {/* New Images */}
                       {projectFiles.images.map((file, index) => {
                         const fileSize = (file.size / 1024 / 1024).toFixed(2)
                         const previewUrl = imagePreviewUrls[index]
                         return (
-                          <div key={index} className="relative group border rounded-lg overflow-hidden bg-muted/30">
+                          <div key={`new-${index}`} className="relative group border rounded-lg overflow-hidden bg-muted/30">
                             <div className="aspect-square relative">
                               <img
                                 src={previewUrl}
@@ -467,6 +432,8 @@ export function ProjectFormDialog({
                           </div>
                         )
                       })}
+                      
+                      {/* Add more button */}
                       <div
                         onClick={() => triggerFileInput("images")}
                         className="border-2 border-dashed border-muted-foreground/25 rounded-lg cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-colors flex flex-col items-center justify-center min-h-[120px]"
@@ -475,6 +442,24 @@ export function ProjectFormDialog({
                         <p className="text-xs text-muted-foreground">Add more</p>
                       </div>
                     </div>
+                  ) : (
+                    // Only show "Click to upload images" in Add mode when no images
+                    !isEditing && (
+                      <div
+                        onClick={() => triggerFileInput("images")}
+                        className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+                            <Upload className="h-6 w-6 text-muted-foreground" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium">Click to upload images</p>
+                            <p className="text-xs text-muted-foreground mt-1">Select one or more image files</p>
+                          </div>
+                        </div>
+                      </div>
+                    )
                   )}
                 </div>
 
