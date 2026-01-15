@@ -52,11 +52,12 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination"
-import { Search, X, Pencil, Trash2, Plus, Filter } from "lucide-react"
+import { Pencil, Trash2, Plus } from "lucide-react"
+import { AdvancedSearchBar, type SearchColumn } from "@/components/shared/AdvancedSearchBar"
+import { parseQuery } from "@/lib/query-parser"
 import { PROPERTY_TYPES } from "@/config/property-types"
 import { useAuth } from "@/contexts/AuthContext"
 import { canEditProperties } from "@/config/roles"
-import ArchivePage from "./Archive"
 import { TableSkeleton } from "@/components/shared/TableSkeleton"
 import { formatError } from "@/lib/error-formatter"
 import { toast } from "sonner"
@@ -67,13 +68,12 @@ import type { ProjectBasic } from "@/types/project"
 const PROPERTY_LISTING_TYPE_DISPLAY_NAMES: Record<PropertyListingType, string> = {
   live: 'Live Listings',
   pocket: 'Pocket Listings',
-  archive: 'Archive',
+  archive: 'Archive', // Kept for type compatibility, but not used in UI
 }
 
 const SLUG_TO_LISTING_TYPE: Record<string, PropertyListingType> = {
   'live': 'live',
   'pocket': 'pocket',
-  'archive': 'archive',
 }
 
 export default function PropertiesPage() {
@@ -93,21 +93,18 @@ export default function PropertiesPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
-  const [filterProject, setFilterProject] = useState<string>("all")
-  const [filterType, setFilterType] = useState<string>("all")
-  const [filterBedrooms, setFilterBedrooms] = useState<string>("all")
-  const [filterPriceMin, setFilterPriceMin] = useState<string>("")
-  const [filterPriceMax, setFilterPriceMax] = useState<string>("")
-  // Applied filters (used for actual API calls)
-  const [appliedFilterProject, setAppliedFilterProject] = useState<string>("all")
-  const [appliedFilterType, setAppliedFilterType] = useState<string>("all")
-  const [appliedFilterBedrooms, setAppliedFilterBedrooms] = useState<string>("all")
-  const [appliedFilterPriceMin, setAppliedFilterPriceMin] = useState<string>("")
-  const [appliedFilterPriceMax, setAppliedFilterPriceMax] = useState<string>("")
   const [currentPage, setCurrentPage] = useState(1)
-  const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [totalCount, setTotalCount] = useState(0)
   const itemsPerPage = 10
+  
+  // Column configuration for search bar
+  const searchColumns: SearchColumn[] = [
+    { key: 'pf_id', label: 'PF ID', type: 'text' },
+    { key: 'type', label: 'Type', type: 'text' },
+    { key: 'bedrooms', label: 'Bedrooms', type: 'number' },
+    { key: 'price', label: 'Price', type: 'number' },
+    { key: 'square_meter', label: 'Square Meter', type: 'number' },
+  ]
   const [deletingPropertyId, setDeletingPropertyId] = useState<number | null>(null)
   const [editingProperty, setEditingProperty] = useState<Property | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -124,7 +121,7 @@ export default function PropertiesPage() {
     longitude: "",
   })
 
-  const fetchProperties = useCallback(async (searchTerm?: string, page: number = 1) => {
+  const fetchProperties = useCallback(async (page: number = 1) => {
     if (!listingType) return
     
     try {
@@ -132,6 +129,15 @@ export default function PropertiesPage() {
       setError(null)
 
       const offset = (page - 1) * itemsPerPage
+      const parsed = parseQuery(searchQuery, searchColumns)
+      
+      // Skip incomplete filters
+      const completeFilters = parsed.filters.filter(f => f.value && f.value.trim())
+      const effectiveParsed = {
+        ...parsed,
+        filters: completeFilters
+      }
+      
       let url = `${supabaseUrl}/rest/v1/property?select=*`
 
       // Filter by pf_id based on listing type
@@ -140,38 +146,63 @@ export default function PropertiesPage() {
       } else if (listingType === 'pocket') {
         url += `&pf_id=is.null`
       }
-      // Archive will be handled later
 
-      // Add search filter if search term exists (search by pf_id)
-      if (searchTerm && searchTerm.trim() && listingType === 'live') {
-        const searchPattern = `*${searchTerm.trim()}*`
+      // Add text search (only for live listings, search by pf_id)
+      if (effectiveParsed.textSearch && effectiveParsed.textSearch.trim() && listingType === 'live') {
+        const searchPattern = `*${effectiveParsed.textSearch.trim()}*`
         url += `&pf_id=ilike.${encodeURIComponent(searchPattern)}`
       }
 
-      // Add project filter
-      if (appliedFilterProject && appliedFilterProject !== "all") {
-        url += `&project_id=eq.${appliedFilterProject}`
+      // Add filters
+      for (const filter of effectiveParsed.filters) {
+        const column = searchColumns.find(col => col.key === filter.column)
+        if (!column) continue
+        
+        let filterValue: string | number = filter.value
+        if (column.type === 'number') {
+          const numValue = parseFloat(filter.value)
+          if (!isNaN(numValue)) {
+            filterValue = numValue
+          } else {
+            continue
+          }
+        }
+        
+        switch (filter.operator) {
+          case '>':
+            url += `&${filter.column}=gt.${encodeURIComponent(filterValue)}`
+            break
+          case '>=':
+            url += `&${filter.column}=gte.${encodeURIComponent(filterValue)}`
+            break
+          case '<':
+            url += `&${filter.column}=lt.${encodeURIComponent(filterValue)}`
+            break
+          case '<=':
+            url += `&${filter.column}=lte.${encodeURIComponent(filterValue)}`
+            break
+          case '!=':
+            url += `&${filter.column}=neq.${encodeURIComponent(filterValue)}`
+            break
+          case '=':
+          default:
+            if (column.type === 'number') {
+              url += `&${filter.column}=eq.${encodeURIComponent(filterValue)}`
+            } else {
+              url += `&${filter.column}=ilike.${encodeURIComponent(`%${filter.value}%`)}`
+            }
+            break
+        }
+      }
+      
+      // Add sorting
+      if (effectiveParsed.sort) {
+        url += `&order=${effectiveParsed.sort.column}.${effectiveParsed.sort.direction}`
+      } else {
+        url += `&order=id.asc`
       }
 
-      // Add type filter
-      if (appliedFilterType && appliedFilterType !== "all") {
-        url += `&type=eq.${encodeURIComponent(appliedFilterType)}`
-      }
-
-      // Add bedrooms filter
-      if (appliedFilterBedrooms && appliedFilterBedrooms !== "all") {
-        url += `&bedrooms=eq.${appliedFilterBedrooms}`
-      }
-
-      // Add price filters
-      if (appliedFilterPriceMin) {
-        url += `&price=gte.${appliedFilterPriceMin}`
-      }
-      if (appliedFilterPriceMax) {
-        url += `&price=lte.${appliedFilterPriceMax}`
-      }
-
-      url += `&limit=${itemsPerPage}&offset=${offset}&order=id.asc`
+      url += `&limit=${itemsPerPage}&offset=${offset}`
 
       const response = await axios.get(
         url,
@@ -201,7 +232,7 @@ export default function PropertiesPage() {
     } finally {
       setLoading(false)
     }
-  }, [supabaseUrl, supabaseAnonKey, itemsPerPage, listingType, appliedFilterProject, appliedFilterType, appliedFilterBedrooms, appliedFilterPriceMin, appliedFilterPriceMax])
+  }, [supabaseUrl, supabaseAnonKey, itemsPerPage, listingType, searchQuery, searchColumns])
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -414,7 +445,7 @@ export default function PropertiesPage() {
       }
 
       // Refresh the list
-      fetchProperties(searchQuery || undefined, currentPage)
+      fetchProperties(currentPage)
       setEditingProperty(null)
       setFormData({
         project_id: "",
@@ -456,7 +487,7 @@ export default function PropertiesPage() {
       )
 
       // Refresh the list
-      fetchProperties(searchQuery || undefined, currentPage)
+      fetchProperties(currentPage)
     } catch (err: unknown) {
       console.error("Error deleting property:", err)
       const message = formatError(err) || "Failed to delete property"
@@ -481,10 +512,6 @@ export default function PropertiesPage() {
     )
   }
 
-  // Archive page - full implementation
-  if (listingType === 'archive') {
-    return <ArchivePage />
-  }
 
   return (
     <RoleBasedLayout>
@@ -528,265 +555,15 @@ export default function PropertiesPage() {
             )}
           </div>
 
-          {/* Search Bar and Filter Button */}
-          <div className="flex items-center gap-2 mb-4">
-            <div className="relative flex-1 max-w-sm">
-              <Input
-                type="text"
-                placeholder="Search by PF ID..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleSearch()
-                  }
-                }}
-                className="pr-10 cursor-pointer"
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleSearch}
-                disabled={listingType !== 'live'}
-                className="absolute right-1 top-1/2 transform -translate-y-1/2 h-7 w-7 cursor-pointer"
-                title="Search"
-              >
-                <Search className="h-4 w-4" />
-              </Button>
-            </div>
-            <Button
-              variant="outline"
-              onClick={() => setIsFilterOpen(!isFilterOpen)}
-              className="cursor-pointer"
-            >
-              <Filter className="h-4 w-4 mr-2" />
-              Filters
-            </Button>
+          {/* Unified Search/Filter/Sort Bar */}
+          <div className="mb-4">
+            <AdvancedSearchBar
+              columns={searchColumns}
+              value={searchQuery}
+              onChange={setSearchQuery}
+              onApply={handleSearchApply}
+            />
           </div>
-
-          {/* Advanced Filters - Desktop (toggleable, hidden on mobile) */}
-          {isFilterOpen && !isMobile && (
-            <div className="hidden md:flex items-center gap-4 flex-wrap">
-            <div className="flex items-center gap-2">
-              <FieldLabel htmlFor="filter-project">Project:</FieldLabel>
-              <Select value={filterProject} onValueChange={setFilterProject}>
-                <SelectTrigger id="filter-project" className="w-[200px] cursor-pointer">
-                  <SelectValue placeholder="All Projects" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all" className="cursor-pointer">All Projects</SelectItem>
-                  {projects.map((project) => (
-                    <SelectItem key={project.id} value={project.id.toString()} className="cursor-pointer">
-                      {project.slug}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <FieldLabel htmlFor="filter-type">Type:</FieldLabel>
-              <Select value={filterType} onValueChange={setFilterType}>
-                <SelectTrigger id="filter-type" className="w-[150px] cursor-pointer">
-                  <SelectValue placeholder="All Types" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all" className="cursor-pointer">All Types</SelectItem>
-                  {PROPERTY_TYPES.map((type) => (
-                    <SelectItem key={type} value={type} className="cursor-pointer">
-                      {type}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <FieldLabel htmlFor="filter-bedrooms">Bedrooms:</FieldLabel>
-              <Select value={filterBedrooms} onValueChange={setFilterBedrooms}>
-                <SelectTrigger id="filter-bedrooms" className="w-[150px] cursor-pointer">
-                  <SelectValue placeholder="All" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all" className="cursor-pointer">All</SelectItem>
-                  <SelectItem value="0" className="cursor-pointer">Studio</SelectItem>
-                  <SelectItem value="1" className="cursor-pointer">1</SelectItem>
-                  <SelectItem value="2" className="cursor-pointer">2</SelectItem>
-                  <SelectItem value="3" className="cursor-pointer">3</SelectItem>
-                  <SelectItem value="4" className="cursor-pointer">4</SelectItem>
-                  <SelectItem value="5" className="cursor-pointer">5+</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <FieldLabel htmlFor="filter-price-min">Price Min:</FieldLabel>
-              <Input
-                id="filter-price-min"
-                type="number"
-                placeholder="Min"
-                value={filterPriceMin}
-                onChange={(e) => setFilterPriceMin(e.target.value)}
-                className="w-[120px] cursor-pointer"
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <FieldLabel htmlFor="filter-price-max">Price Max:</FieldLabel>
-              <Input
-                id="filter-price-max"
-                type="number"
-                placeholder="Max"
-                value={filterPriceMax}
-                onChange={(e) => setFilterPriceMax(e.target.value)}
-                className="w-[120px] cursor-pointer"
-              />
-            </div>
-
-            <Button
-              onClick={applyFilters}
-              className="cursor-pointer"
-              disabled={!hasFilterChanges}
-            >
-              Apply Filters
-            </Button>
-
-            {hasActiveFilters && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={clearFilters}
-                className="cursor-pointer"
-              >
-                <X className="h-4 w-4 mr-2" />
-                Clear Filters
-              </Button>
-            )}
-          </div>
-          )}
-
-          {/* Filter Dialog - Mobile/Tablet only */}
-          <Dialog 
-            open={isFilterOpen && isMobile} 
-            onOpenChange={(open) => {
-              // Only handle dialog close on mobile
-              if (isMobile) {
-                setIsFilterOpen(open)
-              }
-            }}
-          >
-            <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Filters</DialogTitle>
-                <DialogDescription>
-                  Apply filters to refine your search results.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <Field>
-                  <FieldLabel htmlFor="sheet-filter-project">Project</FieldLabel>
-                  <Select value={filterProject} onValueChange={setFilterProject}>
-                    <SelectTrigger id="sheet-filter-project" className="cursor-pointer">
-                      <SelectValue placeholder="All Projects" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all" className="cursor-pointer">All Projects</SelectItem>
-                      {projects.map((project) => (
-                        <SelectItem key={project.id} value={project.id.toString()} className="cursor-pointer">
-                          {project.slug}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-
-                <Field>
-                  <FieldLabel htmlFor="sheet-filter-type">Type</FieldLabel>
-                  <Select value={filterType} onValueChange={setFilterType}>
-                    <SelectTrigger id="sheet-filter-type" className="cursor-pointer">
-                      <SelectValue placeholder="All Types" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all" className="cursor-pointer">All Types</SelectItem>
-                      {PROPERTY_TYPES.map((type) => (
-                        <SelectItem key={type} value={type} className="cursor-pointer">
-                          {type}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-
-                <Field>
-                  <FieldLabel htmlFor="sheet-filter-bedrooms">Bedrooms</FieldLabel>
-                  <Select value={filterBedrooms} onValueChange={setFilterBedrooms}>
-                    <SelectTrigger id="sheet-filter-bedrooms" className="cursor-pointer">
-                      <SelectValue placeholder="All" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all" className="cursor-pointer">All</SelectItem>
-                      <SelectItem value="0" className="cursor-pointer">Studio</SelectItem>
-                      <SelectItem value="1" className="cursor-pointer">1</SelectItem>
-                      <SelectItem value="2" className="cursor-pointer">2</SelectItem>
-                      <SelectItem value="3" className="cursor-pointer">3</SelectItem>
-                      <SelectItem value="4" className="cursor-pointer">4</SelectItem>
-                      <SelectItem value="5" className="cursor-pointer">5+</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
-
-                <Field>
-                  <FieldLabel htmlFor="sheet-filter-price-min">Price Min</FieldLabel>
-                  <Input
-                    id="sheet-filter-price-min"
-                    type="number"
-                    placeholder="Min"
-                    value={filterPriceMin}
-                    onChange={(e) => setFilterPriceMin(e.target.value)}
-                    className="cursor-pointer"
-                  />
-                </Field>
-
-                <Field>
-                  <FieldLabel htmlFor="sheet-filter-price-max">Price Max</FieldLabel>
-                  <Input
-                    id="sheet-filter-price-max"
-                    type="number"
-                    placeholder="Max"
-                    value={filterPriceMax}
-                    onChange={(e) => setFilterPriceMax(e.target.value)}
-                    className="cursor-pointer"
-                  />
-                </Field>
-
-                <div className="flex gap-2 pt-4">
-                  <Button
-                    onClick={() => {
-                      applyFilters()
-                      setIsFilterOpen(false)
-                    }}
-                    className="flex-1 cursor-pointer"
-                    disabled={!hasFilterChanges}
-                  >
-                    Apply Filters
-                  </Button>
-                  {hasActiveFilters && (
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        clearFilters()
-                        setIsFilterOpen(false)
-                      }}
-                      className="cursor-pointer"
-                    >
-                      <X className="h-4 w-4 mr-2" />
-                      Clear
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
 
           {error && (
             <div className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">

@@ -51,7 +51,9 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination"
-import { Pencil, Trash2, Plus, X } from "lucide-react"
+import { Pencil, Trash2, Plus } from "lucide-react"
+import { AdvancedSearchBar, type SearchColumn } from "@/components/shared/AdvancedSearchBar"
+import { parseQuery } from "@/lib/query-parser"
 import { canViewAreas, canEditAreas } from "@/config/roles"
 import { CITIES } from "@/config/cities"
 
@@ -70,10 +72,16 @@ export default function AreasPage() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [deletingAreaId, setDeletingAreaId] = useState<number | null>(null)
-  const [selectedCity, setSelectedCity] = useState<string>("all")
+  const [searchQuery, setSearchQuery] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
   const itemsPerPage = 10
+  
+  // Column configuration for search bar
+  const searchColumns: SearchColumn[] = [
+    { key: 'title', label: 'Title', type: 'text' },
+    { key: 'city', label: 'City', type: 'text' },
+  ]
   const [formData, setFormData] = useState({
     title: "",
     city: "",
@@ -85,18 +93,48 @@ export default function AreasPage() {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
   const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-  const fetchAreas = useCallback(async (page: number = 1, cityFilter?: string) => {
+  const fetchAreas = useCallback(async (page: number = 1) => {
     try {
       setLoading(true)
       setError(null)
 
       const offset = (page - 1) * itemsPerPage
-      let url = `${supabaseUrl}/rest/v1/area?select=*&limit=${itemsPerPage}&offset=${offset}`
+      const parsed = parseQuery(searchQuery, searchColumns)
       
-      // Add city filter if not "all"
-      if (cityFilter && cityFilter !== "all") {
-        url += `&city=eq.${encodeURIComponent(cityFilter)}`
+      // Skip incomplete filters
+      const completeFilters = parsed.filters.filter(f => f.value && f.value.trim())
+      const effectiveParsed = {
+        ...parsed,
+        filters: completeFilters
       }
+      
+      let url = `${supabaseUrl}/rest/v1/area?select=*`
+      
+      // Add text search
+      if (effectiveParsed.textSearch && effectiveParsed.textSearch.trim()) {
+        const searchPattern = `*${effectiveParsed.textSearch.trim()}*`
+        url += `&or=(title.ilike.${encodeURIComponent(searchPattern)},city.ilike.${encodeURIComponent(searchPattern)})`
+      }
+      
+      // Add filters
+      for (const filter of effectiveParsed.filters) {
+        const column = searchColumns.find(col => col.key === filter.column)
+        if (!column) continue
+        
+        switch (filter.operator) {
+          case '=':
+          default:
+            url += `&${filter.column}=ilike.${encodeURIComponent(`%${filter.value}%`)}`
+            break
+        }
+      }
+      
+      // Add sorting
+      if (effectiveParsed.sort) {
+        url += `&order=${effectiveParsed.sort.column}.${effectiveParsed.sort.direction}`
+      }
+      
+      url += `&limit=${itemsPerPage}&offset=${offset}`
 
       const response = await axios.get(url, {
         headers: {
@@ -123,7 +161,7 @@ export default function AreasPage() {
     } finally {
       setLoading(false)
     }
-  }, [supabaseUrl, supabaseAnonKey, itemsPerPage])
+  }, [supabaseUrl, supabaseAnonKey, itemsPerPage, searchQuery, searchColumns])
 
   useEffect(() => {
     if (!canView) {
@@ -132,13 +170,27 @@ export default function AreasPage() {
       return
     }
     
-    // Reset to page 1 when city filter changes
-    if (selectedCity !== "all") {
+    // Debounced search
+    const timeoutId = setTimeout(() => {
       setCurrentPage(1)
-    }
-    
-    fetchAreas(selectedCity !== "all" ? 1 : currentPage, selectedCity)
-  }, [canView, currentPage, selectedCity]) // Removed fetchAreas from dependencies
+      fetchAreas(1)
+    }, searchQuery.trim() ? 1500 : 0)
+
+    return () => clearTimeout(timeoutId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canView, searchQuery])
+
+  // Fetch when page changes
+  useEffect(() => {
+    if (!canView) return
+    fetchAreas(currentPage)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canView, currentPage])
+
+  const handleSearchApply = useCallback((query: string) => {
+    setSearchQuery(query)
+    setCurrentPage(1)
+  }, [])
 
   const totalPages = Math.ceil(totalCount / itemsPerPage)
 
@@ -322,40 +374,14 @@ export default function AreasPage() {
             </div>
           )}
 
-          {/* Filter Section */}
-          <div className="flex items-center gap-4 mb-4">
-            <div className="flex items-center gap-2">
-              <FieldLabel htmlFor="city-filter">Filter by City:</FieldLabel>
-              <Select value={selectedCity} onValueChange={setSelectedCity}>
-                <SelectTrigger id="city-filter" className="w-[250px]">
-                  <SelectValue placeholder="All Cities" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Cities</SelectItem>
-                  {CITIES.map((city) => (
-                    <SelectItem key={city} value={city}>
-                      {city}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {selectedCity !== "all" && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setSelectedCity("all")}
-                  className="cursor-pointer"
-                  title="Clear filter"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-            {selectedCity !== "all" && (
-              <span className="text-sm text-muted-foreground">
-                Showing {areas.length} area{areas.length !== 1 ? 's' : ''}
-              </span>
-            )}
+          {/* Unified Search/Filter/Sort Bar */}
+          <div className="mb-4">
+            <AdvancedSearchBar
+              columns={searchColumns}
+              value={searchQuery}
+              onChange={setSearchQuery}
+              onApply={handleSearchApply}
+            />
           </div>
 
           {loading ? (
@@ -381,9 +407,9 @@ export default function AreasPage() {
                   {areas.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={canEdit ? 5 : 4} className="text-center text-muted-foreground">
-                        {selectedCity === "all" 
-                          ? "No areas found. Click \"Add Area\" to create one."
-                          : `No areas found for ${selectedCity}.`
+                        {searchQuery.trim() 
+                          ? "No areas found matching your search."
+                          : "No areas found. Click \"Add Area\" to create one."
                         }
                       </TableCell>
                     </TableRow>

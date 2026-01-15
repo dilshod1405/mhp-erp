@@ -60,7 +60,9 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination"
-import { Pencil, Trash2, Search } from "lucide-react"
+import { Pencil, Trash2 } from "lucide-react"
+import { AdvancedSearchBar, type SearchColumn } from "@/components/shared/AdvancedSearchBar"
+import { parseQuery } from "@/lib/query-parser"
 import {
   Avatar,
   AvatarFallback,
@@ -90,6 +92,13 @@ export default function UsersPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
   const itemsPerPage = 10
+  
+  // Column configuration for search bar
+  const searchColumns: SearchColumn[] = [
+    { key: 'full_name', label: 'Full Name', type: 'text' },
+    { key: 'email', label: 'Email', type: 'text' },
+    { key: 'phone', label: 'Phone', type: 'text' },
+  ]
   const [formData, setFormData] = useState({
     full_name: "",
     email: "",
@@ -104,7 +113,7 @@ export default function UsersPage() {
   const canEditRole = canEditEmployeeRole(employee?.role)
   const editableRoles = getEditableRoles(employee?.role)
 
-  const fetchUsers = useCallback(async (searchTerm?: string, page: number = 1) => {
+  const fetchUsers = useCallback(async (page: number = 1) => {
     try {
       setLoading(true)
       setError(null)
@@ -114,13 +123,41 @@ export default function UsersPage() {
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
       const offset = (page - 1) * itemsPerPage
-      let url = `${supabaseUrl}/rest/v1/account?select=id,user_id,email,phone,full_name,avatar,role&order=id.asc`
+      const parsed = parseQuery(searchQuery, searchColumns)
       
-      // Add search filter if search term exists
-      if (searchTerm && searchTerm.trim()) {
-        const searchPattern = `*${searchTerm.trim()}*`
-        // Search by full_name, email, or phone
+      // Skip incomplete filters
+      const completeFilters = parsed.filters.filter(f => f.value && f.value.trim())
+      const effectiveParsed = {
+        ...parsed,
+        filters: completeFilters
+      }
+      
+      let url = `${supabaseUrl}/rest/v1/account?select=id,user_id,email,phone,full_name,avatar,role`
+      
+      // Add text search
+      if (effectiveParsed.textSearch && effectiveParsed.textSearch.trim()) {
+        const searchPattern = `*${effectiveParsed.textSearch.trim()}*`
         url += `&or=(full_name.ilike.${encodeURIComponent(searchPattern)},email.ilike.${encodeURIComponent(searchPattern)},phone.ilike.${encodeURIComponent(searchPattern)})`
+      }
+      
+      // Add filters
+      for (const filter of effectiveParsed.filters) {
+        const column = searchColumns.find(col => col.key === filter.column)
+        if (!column) continue
+        
+        switch (filter.operator) {
+          case '=':
+          default:
+            url += `&${filter.column}=ilike.${encodeURIComponent(`%${filter.value}%`)}`
+            break
+        }
+      }
+      
+      // Add sorting
+      if (effectiveParsed.sort) {
+        url += `&order=${effectiveParsed.sort.column}.${effectiveParsed.sort.direction}`
+      } else {
+        url += `&order=id.asc`
       }
       
       url += `&limit=${itemsPerPage}&offset=${offset}`
@@ -169,7 +206,7 @@ export default function UsersPage() {
     } finally {
       setLoading(false)
     }
-  }, [itemsPerPage])
+  }, [itemsPerPage, searchQuery, searchColumns, employee?.user_id])
 
   // Main effect: fetch users when dependencies change
   useEffect(() => {
@@ -185,25 +222,27 @@ export default function UsersPage() {
       return
     }
 
-    // If there's a search query, use debounced search
-    if (searchQuery.trim()) {
-      const timeoutId = setTimeout(() => {
-        setCurrentPage(1) // Reset to first page when search changes
-        fetchUsers(searchQuery, 1)
-      }, 1500) // 1.5 second debounce - wait for user to finish typing
+    // Debounced search
+    const timeoutId = setTimeout(() => {
+      setCurrentPage(1)
+      fetchUsers(1)
+    }, searchQuery.trim() ? 1500 : 0)
 
-      return () => clearTimeout(timeoutId)
-    } else {
-      // No search query, fetch current page
-      fetchUsers(undefined, currentPage)
-    }
+    return () => clearTimeout(timeoutId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, canView, currentPage, searchQuery]) // fetchUsers is stable, no need to include in deps
+  }, [authLoading, canView, searchQuery])
 
-  const handleSearch = () => {
+  // Fetch when page changes
+  useEffect(() => {
+    if (authLoading || !canView) return
+    fetchUsers(currentPage)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, canView, currentPage])
+
+  const handleSearchApply = useCallback((query: string) => {
+    setSearchQuery(query)
     setCurrentPage(1)
-    fetchUsers(searchQuery, 1)
-  }
+  }, [])
 
   const totalPages = Math.ceil(totalCount / itemsPerPage)
 
@@ -266,7 +305,7 @@ export default function UsersPage() {
         }
       )
 
-      await fetchUsers(searchQuery, currentPage)
+      await fetchUsers(currentPage)
     } catch (err) {
       const errorMessage = formatError(err) || "Failed to delete user"
       toast.error(errorMessage)
@@ -417,7 +456,7 @@ export default function UsersPage() {
       setEditingUser(null)
       setAvatarFile(null)
       setAvatarPreview(null)
-      await fetchUsers(searchQuery, currentPage)
+      await fetchUsers(currentPage)
       toast.success("User updated successfully")
     } catch (err) {
       const errorMessage = formatError(err) || "Failed to update user"
@@ -513,7 +552,7 @@ export default function UsersPage() {
         role: "" as UserRole | "",
       })
       setIsSaving(false)
-      await fetchUsers(searchQuery, currentPage)
+      await fetchUsers(currentPage)
       toast.success("User created successfully")
     } catch (err) {
       const errorMessage = formatError(err) || "Failed to add user"
@@ -581,31 +620,14 @@ export default function UsersPage() {
             <h1 className="text-2xl font-bold">Users</h1>
           </div>
 
-          {/* Search Bar */}
-          <div className="flex items-center gap-2 mb-4">
-            <div className="relative flex-1 max-w-sm">
-              <Input
-                type="text"
-                placeholder="Search by name, email, or phone..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleSearch()
-                  }
-                }}
-                className="pr-10 cursor-pointer"
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleSearch}
-                className="absolute right-1 top-1/2 transform -translate-y-1/2 h-7 w-7 cursor-pointer"
-                title="Search"
-              >
-                <Search className="h-4 w-4" />
-              </Button>
-            </div>
+          {/* Unified Search/Filter/Sort Bar */}
+          <div className="mb-4">
+            <AdvancedSearchBar
+              columns={searchColumns}
+              value={searchQuery}
+              onChange={setSearchQuery}
+              onApply={handleSearchApply}
+            />
           </div>
 
           {error && (

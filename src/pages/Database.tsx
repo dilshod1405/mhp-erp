@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from "react"
-import { useIsMobile } from "@/hooks/use-mobile"
 import { RoleBasedLayout } from "@/components/RoleBasedLayout"
 import axios from "axios"
 import {
@@ -21,26 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  Field,
-  FieldLabel,
-} from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   Pagination,
   PaginationContent,
@@ -50,11 +30,7 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination"
 import {
-  Search,
-  X,
-  Filter,
   Upload,
-  CalendarIcon,
   DollarSign,
   MapPin,
   Building2,
@@ -73,17 +49,9 @@ import {
   Calendar,
   Trash2,
 } from "lucide-react"
-import { PROPERTY_TYPES } from "@/config/property-types"
 import { useAuth } from "@/contexts/AuthContext"
 import { supabase } from "@/lib/supabase"
 import { canEditProperties } from "@/config/roles"
-import { Calendar as CalendarComponent } from "@/components/ui/calendar"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import { format } from "date-fns"
 import {
   Sheet,
   SheetContent,
@@ -93,13 +61,15 @@ import {
 } from "@/components/ui/sheet"
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner"
 import { TableSkeleton } from "@/components/shared/TableSkeleton"
+import { AdvancedSearchBar, type SearchColumn } from "@/components/shared/AdvancedSearchBar"
 import { formatError } from "@/lib/error-formatter"
 import { toast } from "sonner"
+import { useTableFilters } from "@/hooks/useTableFilters"
+import { parseQuery } from "@/lib/query-parser"
 
 import type { PropertyTransaction } from "@/types/archive"
 
-export default function ArchivePage() {
-  const isMobile = useIsMobile()
+export default function DatabasePage() {
   const { employee } = useAuth()
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
   const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -112,99 +82,64 @@ export default function ArchivePage() {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
-  const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [selectedProperty, setSelectedProperty] = useState<PropertyTransaction | null>(null)
   const [isDetailSheetOpen, setIsDetailSheetOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [isDeleting, setIsDeleting] = useState(false)
+  const [savedSearches, setSavedSearches] = useState<Array<{ id: string; name: string; query: string; timestamp: number }>>([])
   
-  // Available areas for dropdown
-  const [availableAreas, setAvailableAreas] = useState<string[]>([])
-  const [loadingAreas, setLoadingAreas] = useState(false)
-  const [isAreaSelectOpen, setIsAreaSelectOpen] = useState(false)
-  
-  // Filter states (UI)
-  const [filterDateFrom, setFilterDateFrom] = useState<Date | undefined>(undefined)
-  const [filterDateTo, setFilterDateTo] = useState<Date | undefined>(undefined)
-  const [filterArea, setFilterArea] = useState("all")
-  const [filterPropertyType, setFilterPropertyType] = useState("all")
-  const [filterPriceMin, setFilterPriceMin] = useState("")
-  const [filterPriceMax, setFilterPriceMax] = useState("")
-  const [filterOwnerName, setFilterOwnerName] = useState("")
-  const [filterUnitNumber, setFilterUnitNumber] = useState("")
-  const [filterMobile, setFilterMobile] = useState("")
-  
-  // Applied filters (for API calls)
-  const [appliedFilters, setAppliedFilters] = useState<{
-    dateFrom?: string
-    dateTo?: string
-    area?: string
-    propertyType?: string
-    priceMin?: string
-    priceMax?: string
-    ownerName?: string
-    unitNumber?: string
-    mobile?: string
-    searchVector?: string
-  }>({})
+  // Column configuration for search bar
+  const searchColumns: SearchColumn[] = [
+    { key: 'date', label: 'Date', type: 'date' },
+    { key: 'price', label: 'Price', type: 'number' },
+    { key: 'area_and_community', label: 'Area', type: 'text' },
+    { key: 'project_name', label: 'Project', type: 'text' },
+    { key: 'building', label: 'Building', type: 'text' },
+    { key: 'unit_number', label: 'Unit Number', type: 'text' },
+    { key: 'property_type', label: 'Property Type', type: 'text' },
+    { key: 'bedroom', label: 'Bedrooms', type: 'text' },
+    { key: 'owner_name', label: 'Owner Name', type: 'text' },
+    { key: 'mobile1', label: 'Mobile', type: 'text' },
+    { key: 'deal_type', label: 'Deal Type', type: 'text' },
+    { key: 'size', label: 'Size', type: 'number' },
+  ]
   
   const [currentPage, setCurrentPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
   const itemsPerPage = 50
   
+  const { buildQuery } = useTableFilters({
+    tableName: "property_transaction",
+    columns: searchColumns,
+    textSearchFields: [
+      'owner_name',
+      'area_and_community',
+      'project_name',
+      'building',
+      'unit_number',
+      'mobile1',
+      'deal_type',
+      'property_type'
+    ],
+    defaultSort: { column: "date", direction: "desc" }
+  })
+
   const fetchProperties = useCallback(async (page: number = 1) => {
     try {
       setLoading(true)
       setError(null)
       
-      const offset = (page - 1) * itemsPerPage
+      const parsed = parseQuery(searchQuery, searchColumns)
       
-      // Build query using Supabase client
-      let query = supabase
-        .from("property_transaction")
-        .select("*", { count: "exact" })
-      
-      // Apply text search using textSearch method first (MUHIM)
-      if (appliedFilters.searchVector) {
-        query = query.textSearch("search_vector", appliedFilters.searchVector.trim(), {
-          type: "plain",
-          config: "simple",
-        })
+      // Skip incomplete filters - don't apply filters without values
+      const completeFilters = parsed.filters.filter(f => f.value && f.value.trim())
+      const effectiveParsed = {
+        ...parsed,
+        filters: completeFilters
       }
       
-      // Apply filters
-      if (appliedFilters.dateFrom) {
-        query = query.gte("date", appliedFilters.dateFrom)
-      }
-      if (appliedFilters.dateTo) {
-        query = query.lte("date", appliedFilters.dateTo)
-      }
-      if (appliedFilters.area) {
-        query = query.eq("area_and_community", appliedFilters.area)
-      }
-      if (appliedFilters.propertyType && appliedFilters.propertyType !== "all") {
-        query = query.eq("property_type", appliedFilters.propertyType)
-      }
-      if (appliedFilters.priceMin) {
-        query = query.gte("price", appliedFilters.priceMin)
-      }
-      if (appliedFilters.priceMax) {
-        query = query.lte("price", appliedFilters.priceMax)
-      }
-      if (appliedFilters.ownerName) {
-        query = query.ilike("owner_name", `%${appliedFilters.ownerName}%`)
-      }
-      if (appliedFilters.unitNumber) {
-        query = query.ilike("unit_number", `%${appliedFilters.unitNumber}%`)
-      }
-      if (appliedFilters.mobile) {
-        query = query.ilike("mobile1", `%${appliedFilters.mobile}%`)
-      }
-      
-      // Apply ordering, limit, and offset
-      query = query
-        .order("date", { ascending: false })
-        .range(offset, offset + itemsPerPage - 1)
+      // Build query using the hook
+      const query = buildQuery(effectiveParsed, page, itemsPerPage)
       
       const { data, error, count } = await query
       
@@ -224,77 +159,56 @@ export default function ArchivePage() {
     } finally {
       setLoading(false)
     }
-  }, [appliedFilters, itemsPerPage])
+  }, [searchQuery, itemsPerPage, buildQuery, searchColumns])
   
-  // Fetch available areas for dropdown
-  const fetchAvailableAreas = useCallback(async () => {
+  // Load saved searches from localStorage
+  useEffect(() => {
     try {
-      setLoadingAreas(true)
-      console.log("Fetching areas from property_transaction table...")
-      
-      // Fetch all area_and_community values - use pagination to get all records
-      let allData: { area_and_community: string | null }[] = []
-      let from = 0
-      const pageSize = 1000
-      let hasMore = true
-      
-      while (hasMore) {
-        const { data, error, count } = await supabase
-          .from("property_transaction")
-          .select("area_and_community", { count: 'exact' })
-          .not("area_and_community", "is", null)
-          .range(from, from + pageSize - 1)
-        
-        if (error) {
-          console.error("Error fetching areas:", error)
-          toast.error(`Failed to fetch areas: ${error.message}`)
-          return
-        }
-        
-        if (data && data.length > 0) {
-          allData = [...allData, ...data]
-          from += pageSize
-          hasMore = data.length === pageSize && (count === null || from < count)
-        } else {
-          hasMore = false
-        }
+      const saved = localStorage.getItem('database_saved_searches')
+      if (saved) {
+        setSavedSearches(JSON.parse(saved))
       }
-      
-      console.log("Raw area data received:", allData.length, "rows")
-      
-      // Get unique area values, filter out nulls and empty strings, and sort
-      const uniqueAreas = Array.from(
-        new Set(
-          allData
-            .map((item) => item.area_and_community)
-            .filter((area): area is string => Boolean(area && area.trim()))
-        )
-      ).sort()
-      
-      console.log("Unique areas found:", uniqueAreas.length, uniqueAreas)
-      setAvailableAreas(uniqueAreas)
     } catch (err) {
-      console.error("Error fetching areas:", err)
-      toast.error(`Failed to fetch areas: ${formatError(err) || 'Unknown error'}`)
-    } finally {
-      setLoadingAreas(false)
+      console.error('Failed to load saved searches:', err)
     }
   }, [])
-  
-  // Sync searchQuery state with appliedFilters.searchVector to keep search input in sync
-  useEffect(() => {
-    if (appliedFilters.searchVector && searchQuery !== appliedFilters.searchVector) {
-      setSearchQuery(appliedFilters.searchVector)
-    } else if (!appliedFilters.searchVector && searchQuery) {
-      // Don't clear searchQuery if searchVector was removed - let user clear it manually
+
+  // Handle search apply
+  const handleSearchApply = useCallback((query: string) => {
+    setSearchQuery(query)
+    setCurrentPage(1)
+  }, [])
+
+  // Save search
+  const handleSaveSearch = useCallback((name: string, query: string) => {
+    const newSaved = {
+      id: Date.now().toString(),
+      name,
+      query,
+      timestamp: Date.now(),
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appliedFilters.searchVector])
+    const updated = [...savedSearches, newSaved]
+    setSavedSearches(updated)
+    localStorage.setItem('database_saved_searches', JSON.stringify(updated))
+  }, [savedSearches])
+
+  // Load search
+  const handleLoadSearch = useCallback((query: string) => {
+    setSearchQuery(query)
+  }, [])
+
+  // Delete search
+  const handleDeleteSearch = useCallback((id: string) => {
+    const updated = savedSearches.filter(s => s.id !== id)
+    setSavedSearches(updated)
+    localStorage.setItem('database_saved_searches', JSON.stringify(updated))
+    toast.success("Search deleted")
+  }, [savedSearches])
 
   useEffect(() => {
     fetchProperties(currentPage)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, appliedFilters]) // fetchProperties is stable, no need to include in deps
+  }, [currentPage, searchQuery]) // Refetch when page or search query changes
   
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -350,61 +264,6 @@ export default function ArchivePage() {
     }
   }
   
-  const handleSearch = useCallback(() => {
-    if (searchQuery.trim()) {
-      setAppliedFilters(prev => ({
-        ...prev,
-        searchVector: searchQuery.trim(),
-      }))
-    } else {
-      setAppliedFilters(prev => {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { searchVector, ...rest } = prev
-        return rest
-      })
-    }
-    setCurrentPage(1)
-  }, [searchQuery])
-  
-  const applyFilters = () => {
-    setAppliedFilters(prev => {
-      const newFilters = {
-        ...prev, // Preserve existing searchVector and other applied filters
-        dateFrom: filterDateFrom ? filterDateFrom.toISOString().split('T')[0] : undefined,
-        dateTo: filterDateTo ? filterDateTo.toISOString().split('T')[0] : undefined,
-        area: filterArea !== "all" ? filterArea : undefined,
-        propertyType: filterPropertyType !== "all" ? filterPropertyType : undefined,
-        priceMin: filterPriceMin || undefined,
-        priceMax: filterPriceMax || undefined,
-        ownerName: filterOwnerName || undefined,
-        unitNumber: filterUnitNumber || undefined,
-        mobile: filterMobile || undefined,
-      }
-      // Ensure searchVector is preserved from either prev or current searchQuery
-      if (prev.searchVector) {
-        newFilters.searchVector = prev.searchVector
-      } else if (searchQuery.trim()) {
-        newFilters.searchVector = searchQuery.trim()
-      }
-      return newFilters
-    })
-    setCurrentPage(1)
-  }
-  
-  const clearFilters = () => {
-    setFilterDateFrom(undefined)
-    setFilterDateTo(undefined)
-    setFilterArea("all")
-    setFilterPropertyType("all")
-    setFilterPriceMin("")
-    setFilterPriceMax("")
-    setFilterOwnerName("")
-    setFilterUnitNumber("")
-    setFilterMobile("")
-    setSearchQuery("")
-    setAppliedFilters({})
-    setCurrentPage(1)
-  }
   
   const handleDeleteSelected = async () => {
     if (selectedIds.size === 0) return
@@ -485,12 +344,8 @@ export default function ArchivePage() {
                 <BreadcrumbLink href="/dashboard">Dashboard</BreadcrumbLink>
               </BreadcrumbItem>
               <BreadcrumbSeparator className="hidden md:block" />
-              <BreadcrumbItem className="hidden md:block">
-                <BreadcrumbLink href="#">Properties</BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator className="hidden md:block" />
               <BreadcrumbItem>
-                <BreadcrumbPage>Archive</BreadcrumbPage>
+                <BreadcrumbPage>Database</BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
@@ -499,7 +354,7 @@ export default function ArchivePage() {
       <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
         <div className="rounded-lg border bg-card p-6">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-2xl font-bold">Archive</h1>
+            <h1 className="text-2xl font-bold">Database</h1>
           </div>
           
           {/* Upload Section - Only for IT, CEO, Admin */}
@@ -531,440 +386,20 @@ export default function ArchivePage() {
             </div>
           )}
           
-          {/* Search Bar and Filter Button */}
-          <div className="flex items-center gap-2 mb-4">
-            <div className="relative flex-1 max-w-sm">
-              <Input
-                type="text"
-                placeholder="Search by full text..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleSearch()
-                  }
-                }}
-                className="pr-10 cursor-pointer"
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleSearch}
-                className="absolute right-1 top-1/2 transform -translate-y-1/2 h-7 w-7 cursor-pointer"
-                title="Search"
-              >
-                <Search className="h-4 w-4" />
-              </Button>
-            </div>
-            <Button
-              variant="outline"
-              onClick={() => setIsFilterOpen(!isFilterOpen)}
-              className="cursor-pointer"
-            >
-              <Filter className="h-4 w-4 mr-2" />
-              Filters
-            </Button>
+          {/* Unified Search/Filter/Sort Bar */}
+          <div className="mb-4">
+            <AdvancedSearchBar
+              columns={searchColumns}
+              value={searchQuery}
+              onChange={setSearchQuery}
+              onApply={handleSearchApply}
+              savedSearches={savedSearches}
+              onSaveSearch={handleSaveSearch}
+              onLoadSearch={handleLoadSearch}
+              onDeleteSearch={handleDeleteSearch}
+            />
           </div>
           
-          {/* Advanced Filters - Desktop (toggleable, hidden on mobile) */}
-          {isFilterOpen && !isMobile && (
-            <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4 border rounded-lg bg-muted/50">
-              <Field>
-                <FieldLabel htmlFor="filter-date-from">Date From</FieldLabel>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      id="filter-date-from"
-                      variant="outline"
-                      className="w-full justify-start text-left font-normal cursor-pointer"
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {filterDateFrom ? format(filterDateFrom, "PPP") : <span className="text-muted-foreground">Pick a date</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <CalendarComponent
-                      mode="single"
-                      selected={filterDateFrom}
-                      onSelect={setFilterDateFrom}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </Field>
-              
-              <Field>
-                <FieldLabel htmlFor="filter-date-to">Date To</FieldLabel>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      id="filter-date-to"
-                      variant="outline"
-                      className="w-full justify-start text-left font-normal cursor-pointer"
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {filterDateTo ? format(filterDateTo, "PPP") : <span className="text-muted-foreground">Pick a date</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <CalendarComponent
-                      mode="single"
-                      selected={filterDateTo}
-                      onSelect={setFilterDateTo}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </Field>
-              
-              <Field>
-                <FieldLabel htmlFor="filter-area">Area</FieldLabel>
-                <Select 
-                  value={filterArea} 
-                  onValueChange={setFilterArea}
-                  open={isAreaSelectOpen}
-                  onOpenChange={(open) => {
-                    setIsAreaSelectOpen(open)
-                    if (open && !loadingAreas) {
-                      console.log("Area dropdown opened, fetching areas...")
-                      fetchAvailableAreas()
-                    }
-                  }}
-                  disabled={loadingAreas}
-                >
-                  <SelectTrigger id="filter-area" className="cursor-pointer">
-                    <SelectValue placeholder={loadingAreas ? "Loading areas..." : "All Areas"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all" className="cursor-pointer">All Areas</SelectItem>
-                    {availableAreas.length > 0 ? (
-                      availableAreas.map((area) => (
-                        <SelectItem key={area} value={area} className="cursor-pointer">
-                          {area}
-                        </SelectItem>
-                      ))
-                    ) : (
-                      !loadingAreas && (
-                        <SelectItem value="no-areas" disabled className="cursor-pointer">
-                          No areas found
-                        </SelectItem>
-                      )
-                    )}
-                    {loadingAreas && (
-                      <SelectItem value="loading" disabled className="cursor-pointer">
-                        Loading...
-                      </SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
-              </Field>
-              
-              <Field>
-                <FieldLabel htmlFor="filter-property-type">Property Type</FieldLabel>
-                <Select value={filterPropertyType} onValueChange={setFilterPropertyType}>
-                  <SelectTrigger id="filter-property-type" className="cursor-pointer">
-                    <SelectValue placeholder="All Types" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all" className="cursor-pointer">All Types</SelectItem>
-                    {PROPERTY_TYPES.map((type) => (
-                      <SelectItem key={type} value={type} className="cursor-pointer">
-                        {type}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              
-              <Field>
-                <FieldLabel htmlFor="filter-price-min">Price Min</FieldLabel>
-                <Input
-                  id="filter-price-min"
-                  type="number"
-                  placeholder="Min"
-                  value={filterPriceMin}
-                  onChange={(e) => setFilterPriceMin(e.target.value)}
-                  className="cursor-pointer"
-                />
-              </Field>
-              
-              <Field>
-                <FieldLabel htmlFor="filter-price-max">Price Max</FieldLabel>
-                <Input
-                  id="filter-price-max"
-                  type="number"
-                  placeholder="Max"
-                  value={filterPriceMax}
-                  onChange={(e) => setFilterPriceMax(e.target.value)}
-                  className="cursor-pointer"
-                />
-              </Field>
-              
-              <Field>
-                <FieldLabel htmlFor="filter-owner-name">Owner Name</FieldLabel>
-                <Input
-                  id="filter-owner-name"
-                  type="text"
-                  placeholder="Owner Name"
-                  value={filterOwnerName}
-                  onChange={(e) => setFilterOwnerName(e.target.value)}
-                  className="cursor-pointer"
-                />
-              </Field>
-              
-              <Field>
-                <FieldLabel htmlFor="filter-unit-number">Unit Number</FieldLabel>
-                <Input
-                  id="filter-unit-number"
-                  type="text"
-                  placeholder="Unit Number"
-                  value={filterUnitNumber}
-                  onChange={(e) => setFilterUnitNumber(e.target.value)}
-                  className="cursor-pointer"
-                />
-              </Field>
-              
-              <Field>
-                <FieldLabel htmlFor="filter-mobile">Mobile</FieldLabel>
-                <Input
-                  id="filter-mobile"
-                  type="text"
-                  placeholder="Mobile"
-                  value={filterMobile}
-                  onChange={(e) => setFilterMobile(e.target.value)}
-                  className="cursor-pointer"
-                />
-              </Field>
-              
-              <div className="flex items-end gap-2 col-span-full">
-                <Button
-                  onClick={applyFilters}
-                  className="cursor-pointer"
-                >
-                  Apply Filters
-                </Button>
-                
-                <Button
-                  variant="outline"
-                  onClick={clearFilters}
-                  className="cursor-pointer"
-                >
-                  <X className="h-4 w-4 mr-2" />
-                  Clear Filters
-                </Button>
-              </div>
-            </div>
-          )}
-          
-          {/* Filter Dialog - Mobile/Tablet only */}
-          <Dialog 
-            open={isFilterOpen && isMobile} 
-            onOpenChange={(open) => {
-              if (isMobile) {
-                setIsFilterOpen(open)
-              }
-            }}
-          >
-            <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Filters</DialogTitle>
-                <DialogDescription>
-                  Apply filters to refine your search results.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <Field>
-                  <FieldLabel htmlFor="sheet-filter-date-from">Date From</FieldLabel>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        id="sheet-filter-date-from"
-                        variant="outline"
-                        className="w-full justify-start text-left font-normal cursor-pointer"
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {filterDateFrom ? format(filterDateFrom, "PPP") : <span className="text-muted-foreground">Pick a date</span>}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <CalendarComponent
-                        mode="single"
-                        selected={filterDateFrom}
-                        onSelect={setFilterDateFrom}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </Field>
-                
-                <Field>
-                  <FieldLabel htmlFor="sheet-filter-date-to">Date To</FieldLabel>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        id="sheet-filter-date-to"
-                        variant="outline"
-                        className="w-full justify-start text-left font-normal cursor-pointer"
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {filterDateTo ? format(filterDateTo, "PPP") : <span className="text-muted-foreground">Pick a date</span>}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <CalendarComponent
-                        mode="single"
-                        selected={filterDateTo}
-                        onSelect={setFilterDateTo}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </Field>
-                
-                <Field>
-                  <FieldLabel htmlFor="sheet-filter-area">Area</FieldLabel>
-                  <Select 
-                    value={filterArea} 
-                    onValueChange={setFilterArea}
-                    open={isAreaSelectOpen}
-                    onOpenChange={(open) => {
-                      setIsAreaSelectOpen(open)
-                      if (open && !loadingAreas) {
-                        console.log("Area dropdown opened (mobile), fetching areas...")
-                        fetchAvailableAreas()
-                      }
-                    }}
-                    disabled={loadingAreas}
-                  >
-                    <SelectTrigger id="sheet-filter-area" className="cursor-pointer">
-                      <SelectValue placeholder={loadingAreas ? "Loading areas..." : "All Areas"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all" className="cursor-pointer">All Areas</SelectItem>
-                      {availableAreas.length > 0 ? (
-                        availableAreas.map((area) => (
-                          <SelectItem key={area} value={area} className="cursor-pointer">
-                            {area}
-                          </SelectItem>
-                        ))
-                      ) : (
-                        !loadingAreas && (
-                          <SelectItem value="no-areas" disabled className="cursor-pointer">
-                            No areas found
-                          </SelectItem>
-                        )
-                      )}
-                      {loadingAreas && (
-                        <SelectItem value="loading" disabled className="cursor-pointer">
-                          Loading...
-                        </SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                
-                <Field>
-                  <FieldLabel htmlFor="sheet-filter-property-type">Property Type</FieldLabel>
-                  <Select value={filterPropertyType} onValueChange={setFilterPropertyType}>
-                    <SelectTrigger id="sheet-filter-property-type" className="cursor-pointer">
-                      <SelectValue placeholder="All Types" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all" className="cursor-pointer">All Types</SelectItem>
-                      {PROPERTY_TYPES.map((type) => (
-                        <SelectItem key={type} value={type} className="cursor-pointer">
-                          {type}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                
-                <Field>
-                  <FieldLabel htmlFor="sheet-filter-price-min">Price Min</FieldLabel>
-                  <Input
-                    id="sheet-filter-price-min"
-                    type="number"
-                    placeholder="Min"
-                    value={filterPriceMin}
-                    onChange={(e) => setFilterPriceMin(e.target.value)}
-                    className="cursor-pointer"
-                  />
-                </Field>
-                
-                <Field>
-                  <FieldLabel htmlFor="sheet-filter-price-max">Price Max</FieldLabel>
-                  <Input
-                    id="sheet-filter-price-max"
-                    type="number"
-                    placeholder="Max"
-                    value={filterPriceMax}
-                    onChange={(e) => setFilterPriceMax(e.target.value)}
-                    className="cursor-pointer"
-                  />
-                </Field>
-                
-                <Field>
-                  <FieldLabel htmlFor="sheet-filter-owner-name">Owner Name</FieldLabel>
-                  <Input
-                    id="sheet-filter-owner-name"
-                    type="text"
-                    placeholder="Owner Name"
-                    value={filterOwnerName}
-                    onChange={(e) => setFilterOwnerName(e.target.value)}
-                    className="cursor-pointer"
-                  />
-                </Field>
-                
-                <Field>
-                  <FieldLabel htmlFor="sheet-filter-unit-number">Unit Number</FieldLabel>
-                  <Input
-                    id="sheet-filter-unit-number"
-                    type="text"
-                    placeholder="Unit Number"
-                    value={filterUnitNumber}
-                    onChange={(e) => setFilterUnitNumber(e.target.value)}
-                    className="cursor-pointer"
-                  />
-                </Field>
-                
-                <Field>
-                  <FieldLabel htmlFor="sheet-filter-mobile">Mobile</FieldLabel>
-                  <Input
-                    id="sheet-filter-mobile"
-                    type="text"
-                    placeholder="Mobile"
-                    value={filterMobile}
-                    onChange={(e) => setFilterMobile(e.target.value)}
-                    className="cursor-pointer"
-                  />
-                </Field>
-                
-                <div className="flex gap-2 pt-4">
-                  <Button
-                    onClick={() => {
-                      applyFilters()
-                      setIsFilterOpen(false)
-                    }}
-                    className="flex-1 cursor-pointer"
-                  >
-                    Apply Filters
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      clearFilters()
-                      setIsFilterOpen(false)
-                    }}
-                    className="cursor-pointer"
-                  >
-                    <X className="h-4 w-4 mr-2" />
-                    Clear
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
           
           {error && (
             <div className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
@@ -1264,7 +699,7 @@ export default function ArchivePage() {
               {selectedProperty && (
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-3 py-2 border-b">
-                    <CalendarIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                     <div className="flex-1">
                       <div className="text-xs text-muted-foreground">Date</div>
                       <div className="text-sm font-medium">{formatDate(selectedProperty.date)}</div>

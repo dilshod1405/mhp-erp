@@ -10,6 +10,7 @@ import {
   Landmark,
   MapPin,
   Users,
+  Database,
 } from "lucide-react"
 
 
@@ -70,11 +71,12 @@ export function AppSidebar({
           title: "Pocket listings",
           url: "/properties/pocket",
         },
-        {
-          title: "Archive",
-          url: "/properties/archive",
-        },
       ],
+    },
+    {
+      title: "Database",
+      url: "/database",
+      icon: Database,
     },
     {
       title: "Projects",

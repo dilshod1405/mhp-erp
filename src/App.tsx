@@ -11,6 +11,7 @@ import DevelopersPage from "./pages/Developers"
 import ContactsPage from "./pages/Contacts"
 import ProjectsPage from "./pages/Projects"
 import PropertiesPage from "./pages/Properties"
+import DatabasePage from "./pages/Database"
 import UnauthorizedPage from "./pages/Unauthorized"
 
 function App() {
@@ -98,6 +99,16 @@ function App() {
           element={
             <ProtectedRoute>
               <PropertiesPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Database page */}
+        <Route
+          path="/database"
+          element={
+            <ProtectedRoute>
+              <DatabasePage />
             </ProtectedRoute>
           }
         />

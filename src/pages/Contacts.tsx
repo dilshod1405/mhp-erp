@@ -43,7 +43,9 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination"
-import { Pencil, Trash2, Plus, Search } from "lucide-react"
+import { Pencil, Trash2, Plus } from "lucide-react"
+import { AdvancedSearchBar, type SearchColumn } from "@/components/shared/AdvancedSearchBar"
+import { parseQuery } from "@/lib/query-parser"
 
 import type { Contact } from "@/types/contact"
 import { TableSkeleton } from "@/components/shared/TableSkeleton"
@@ -63,6 +65,13 @@ export default function ContactsPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
   const itemsPerPage = 10
+  
+  // Column configuration for search bar
+  const searchColumns: SearchColumn[] = [
+    { key: 'full_name', label: 'Full Name', type: 'text' },
+    { key: 'email', label: 'Email', type: 'text' },
+    { key: 'phone', label: 'Phone', type: 'text' },
+  ]
   const [formData, setFormData] = useState({
     full_name: "",
     email: "",
@@ -75,19 +84,45 @@ export default function ContactsPage() {
   const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
   const validatePhone = (phone: string) => /^\+?[0-9\-\s()]{7,20}$/.test(phone)
 
-  const fetchContacts = useCallback(async (searchTerm?: string, page: number = 1) => {
+  const fetchContacts = useCallback(async (page: number = 1) => {
     try {
       setLoading(true)
       setError(null)
 
       const offset = (page - 1) * itemsPerPage
+      const parsed = parseQuery(searchQuery, searchColumns)
+      
+      // Skip incomplete filters
+      const completeFilters = parsed.filters.filter(f => f.value && f.value.trim())
+      const effectiveParsed = {
+        ...parsed,
+        filters: completeFilters
+      }
+      
       let url = `${supabaseUrl}/rest/v1/contact?select=*`
       
-      // Add search filter if search term exists
-      if (searchTerm && searchTerm.trim()) {
-        const searchPattern = `*${searchTerm.trim()}*`
-        // Format: or(full_name.ilike.*search*,email.ilike.*search*,phone.ilike.*search*)
+      // Add text search
+      if (effectiveParsed.textSearch && effectiveParsed.textSearch.trim()) {
+        const searchPattern = `*${effectiveParsed.textSearch.trim()}*`
         url += `&or=(full_name.ilike.${encodeURIComponent(searchPattern)},email.ilike.${encodeURIComponent(searchPattern)},phone.ilike.${encodeURIComponent(searchPattern)})`
+      }
+      
+      // Add filters
+      for (const filter of effectiveParsed.filters) {
+        const column = searchColumns.find(col => col.key === filter.column)
+        if (!column) continue
+        
+        switch (filter.operator) {
+          case '=':
+          default:
+            url += `&${filter.column}=ilike.${encodeURIComponent(`%${filter.value}%`)}`
+            break
+        }
+      }
+      
+      // Add sorting
+      if (effectiveParsed.sort) {
+        url += `&order=${effectiveParsed.sort.column}.${effectiveParsed.sort.direction}`
       }
       
       url += `&limit=${itemsPerPage}&offset=${offset}`
@@ -118,29 +153,30 @@ export default function ContactsPage() {
     } finally {
       setLoading(false)
     }
-  }, [supabaseUrl, supabaseAnonKey, itemsPerPage])
+  }, [supabaseUrl, supabaseAnonKey, itemsPerPage, searchQuery, searchColumns])
 
   // Main effect: fetch when page changes or search query changes (debounced)
   useEffect(() => {
-    // If there's a search query, use debounced search
-    if (searchQuery.trim()) {
-      const timeoutId = setTimeout(() => {
-        setCurrentPage(1) // Reset to first page when search changes
-        fetchContacts(searchQuery, 1)
-      }, 1500) // 1.5 second debounce - wait for user to finish typing
+    // Debounced search
+    const timeoutId = setTimeout(() => {
+      setCurrentPage(1)
+      fetchContacts(1)
+    }, searchQuery.trim() ? 1500 : 0)
 
-      return () => clearTimeout(timeoutId)
-    } else {
-      // No search query, fetch current page
-      fetchContacts(undefined, currentPage)
-    }
+    return () => clearTimeout(timeoutId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, searchQuery]) // fetchContacts is stable, no need to include in deps
+  }, [searchQuery])
 
-  const handleSearch = () => {
+  // Fetch when page changes
+  useEffect(() => {
+    fetchContacts(currentPage)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage])
+
+  const handleSearchApply = useCallback((query: string) => {
+    setSearchQuery(query)
     setCurrentPage(1)
-    fetchContacts(searchQuery, 1)
-  }
+  }, [])
 
   const totalPages = Math.ceil(totalCount / itemsPerPage)
 
@@ -177,7 +213,7 @@ export default function ContactsPage() {
         }
       )
 
-      await fetchContacts()
+      await fetchContacts(currentPage)
       toast.success("Contact deleted successfully")
     } catch (err: unknown) {
       console.error("Error deleting contact:", err)
@@ -245,7 +281,7 @@ export default function ContactsPage() {
 
       setIsDialogOpen(false)
       setIsAddDialogOpen(false)
-      await fetchContacts()
+      await fetchContacts(currentPage)
       toast.success(editingContact ? "Contact updated successfully" : "Contact created successfully")
     } catch (err: unknown) {
       console.error("Error saving contact:", err)
@@ -288,31 +324,14 @@ export default function ContactsPage() {
             </Button>
           </div>
 
-          {/* Search Bar */}
-          <div className="flex items-center gap-2 mb-4">
-            <div className="relative flex-1 max-w-sm">
-              <Input
-                type="text"
-                placeholder="Search by name, email, or phone..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleSearch()
-                  }
-                }}
-                className="pr-10 cursor-pointer"
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleSearch}
-                className="absolute right-1 top-1/2 transform -translate-y-1/2 h-7 w-7 cursor-pointer"
-                title="Search"
-              >
-                <Search className="h-4 w-4" />
-              </Button>
-            </div>
+          {/* Unified Search/Filter/Sort Bar */}
+          <div className="mb-4">
+            <AdvancedSearchBar
+              columns={searchColumns}
+              value={searchQuery}
+              onChange={setSearchQuery}
+              onApply={handleSearchApply}
+            />
           </div>
 
           {error && (

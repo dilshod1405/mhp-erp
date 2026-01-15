@@ -14,14 +14,11 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
-import { FieldLabel } from "@/components/ui/field"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Input } from "@/components/ui/input"
-import { Plus, X } from "lucide-react"
+import { Plus } from "lucide-react"
 import { ProjectFormDialog } from "@/components/projects/ProjectFormDialog"
 import { ProjectsTable } from "@/components/projects/ProjectsTable"
-import { ProjectsFilters } from "@/components/projects/ProjectsFilters"
-import { SearchBar } from "@/components/shared/SearchBar"
+import { AdvancedSearchBar, type SearchColumn } from "@/components/shared/AdvancedSearchBar"
+import { parseQuery } from "@/lib/query-parser"
 import { TableSkeleton } from "@/components/shared/TableSkeleton"
 import { Pagination } from "@/components/shared/Pagination"
 import { formatError } from "@/lib/error-formatter"
@@ -54,19 +51,15 @@ export default function ProjectsPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [deletingProjectId, setDeletingProjectId] = useState<number | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
-  const [filterDeveloper, setFilterDeveloper] = useState<string>("all")
-  const [filterArea, setFilterArea] = useState<string>("all")
-  const [filterPriceMin, setFilterPriceMin] = useState<string>("")
-  const [filterPriceMax, setFilterPriceMax] = useState<string>("")
-  // Applied filters (used for actual API calls)
-  const [appliedFilterDeveloper, setAppliedFilterDeveloper] = useState<string>("all")
-  const [appliedFilterArea, setAppliedFilterArea] = useState<string>("all")
-  const [appliedFilterPriceMin, setAppliedFilterPriceMin] = useState<string>("")
-  const [appliedFilterPriceMax, setAppliedFilterPriceMax] = useState<string>("")
   const [currentPage, setCurrentPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
   const itemsPerPage = 10
-  const [isFilterOpen, setIsFilterOpen] = useState(false)
+  
+  // Column configuration for search bar
+  const searchColumns: SearchColumn[] = [
+    { key: 'title', label: 'Title', type: 'text' },
+    { key: 'price', label: 'Price', type: 'number' },
+  ]
   const [formData, setFormData] = useState({
     title: "",
     slug: "",
@@ -98,14 +91,7 @@ export default function ProjectsPage() {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
   const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-  const fetchProjects = useCallback(async (
-    searchTerm?: string, 
-    page: number = 1,
-    developerId?: string,
-    areaId?: string,
-    priceMin?: string,
-    priceMax?: string
-  ) => {
+  const fetchProjects = useCallback(async (page: number = 1) => {
     if (!projectType) return
     
     try {
@@ -113,34 +99,73 @@ export default function ProjectsPage() {
       setError(null)
 
       const offset = (page - 1) * itemsPerPage
+      const parsed = parseQuery(searchQuery, searchColumns)
+      
+      // Skip incomplete filters
+      const completeFilters = parsed.filters.filter(f => f.value && f.value.trim())
+      const effectiveParsed = {
+        ...parsed,
+        filters: completeFilters
+      }
+      
       let url = `${supabaseUrl}/rest/v1/project?select=*&type=eq.${encodeURIComponent(projectType)}`
       
-      // Add search filter if search term exists
-      if (searchTerm && searchTerm.trim()) {
-        const searchPattern = `*${searchTerm.trim()}*`
-        // Search by title or slug
+      // Add text search
+      if (effectiveParsed.textSearch && effectiveParsed.textSearch.trim()) {
+        const searchPattern = `*${effectiveParsed.textSearch.trim()}*`
         url += `&or=(title.ilike.${encodeURIComponent(searchPattern)},slug.ilike.${encodeURIComponent(searchPattern)})`
       }
       
-      // Add developer filter
-      if (developerId && developerId !== "all") {
-        url += `&developer_id=eq.${encodeURIComponent(developerId)}`
+      // Add filters
+      for (const filter of effectiveParsed.filters) {
+        const column = searchColumns.find(col => col.key === filter.column)
+        if (!column) continue
+        
+        let filterValue: string | number = filter.value
+        if (column.type === 'number') {
+          const numValue = parseFloat(filter.value)
+          if (!isNaN(numValue)) {
+            filterValue = numValue
+          } else {
+            continue
+          }
+        }
+        
+        switch (filter.operator) {
+          case '>':
+            url += `&${filter.column}=gt.${encodeURIComponent(filterValue)}`
+            break
+          case '>=':
+            url += `&${filter.column}=gte.${encodeURIComponent(filterValue)}`
+            break
+          case '<':
+            url += `&${filter.column}=lt.${encodeURIComponent(filterValue)}`
+            break
+          case '<=':
+            url += `&${filter.column}=lte.${encodeURIComponent(filterValue)}`
+            break
+          case '!=':
+            url += `&${filter.column}=neq.${encodeURIComponent(filterValue)}`
+            break
+          case '=':
+          default:
+            if (column.type === 'number') {
+              url += `&${filter.column}=eq.${encodeURIComponent(filterValue)}`
+            } else {
+              url += `&${filter.column}=ilike.${encodeURIComponent(`%${filter.value}%`)}`
+            }
+            break
+        }
       }
       
-      // Add area filter
-      if (areaId && areaId !== "all") {
-        url += `&area_id=eq.${encodeURIComponent(areaId)}`
+      // Add sorting
+      if (effectiveParsed.sort) {
+        url += `&order=${effectiveParsed.sort.column}.${effectiveParsed.sort.direction}`
+      } else {
+        url += `&order=id.asc`
       }
       
-      // Add price filters
-      if (priceMin && priceMin.trim()) {
-        url += `&price=gte.${encodeURIComponent(priceMin.trim())}`
-      }
-      if (priceMax && priceMax.trim()) {
-        url += `&price=lte.${encodeURIComponent(priceMax.trim())}`
-      }
-      
-      url += `&limit=${itemsPerPage}&offset=${offset}&order=id.asc`
+      url += `&limit=${itemsPerPage}&offset=${offset}`
 
       const response = await axios.get(url, {
         headers: {
@@ -168,7 +193,7 @@ export default function ProjectsPage() {
     } finally {
       setLoading(false)
     }
-  }, [supabaseUrl, supabaseAnonKey, itemsPerPage, projectType])
+  }, [supabaseUrl, supabaseAnonKey, itemsPerPage, projectType, searchQuery, searchColumns])
 
   const fetchDevelopers = useCallback(async () => {
     try {
@@ -215,19 +240,11 @@ export default function ProjectsPage() {
     }
   }, [projectType, fetchDevelopers, fetchAreas])
 
-  // Reset page and filters when project type changes
+  // Reset page when project type changes
   useEffect(() => {
     if (projectType) {
       setCurrentPage(1)
-      // Reset applied filters when project type changes
-      setAppliedFilterDeveloper("all")
-      setAppliedFilterArea("all")
-      setAppliedFilterPriceMin("")
-      setAppliedFilterPriceMax("")
-      setFilterDeveloper("all")
-      setFilterArea("all")
-      setFilterPriceMin("")
-      setFilterPriceMax("")
+      setSearchQuery("")
     }
   }, [projectType])
 
@@ -235,88 +252,27 @@ export default function ProjectsPage() {
   useEffect(() => {
     if (!projectType) return
     
-    // If there's a search query, use debounced search
-    if (searchQuery.trim()) {
-      const timeoutId = setTimeout(() => {
-        setCurrentPage(1) // Reset to first page when search changes
-        fetchProjects(
-          searchQuery, 
-          1,
-          appliedFilterDeveloper,
-          appliedFilterArea,
-          appliedFilterPriceMin,
-          appliedFilterPriceMax
-        )
-      }, 1500) // 1.5 second debounce - wait for user to finish typing
+    // Debounced search
+    const timeoutId = setTimeout(() => {
+      setCurrentPage(1)
+      fetchProjects(1)
+    }, searchQuery.trim() ? 1500 : 0)
 
-      return () => clearTimeout(timeoutId)
-    } else {
-      // No search query, fetch current page with filters
-      fetchProjects(
-        undefined, 
-        currentPage,
-        appliedFilterDeveloper,
-        appliedFilterArea,
-        appliedFilterPriceMin,
-        appliedFilterPriceMax
-      )
-    }
+    return () => clearTimeout(timeoutId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectType, currentPage, searchQuery, appliedFilterDeveloper, appliedFilterArea, appliedFilterPriceMin, appliedFilterPriceMax]) // fetchProjects is stable, no need to include in deps
+  }, [projectType, searchQuery])
 
-  const handleSearch = () => {
+  // Fetch when page changes
+  useEffect(() => {
+    if (!projectType) return
+    fetchProjects(currentPage)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage])
+
+  const handleSearchApply = useCallback((query: string) => {
+    setSearchQuery(query)
     setCurrentPage(1)
-    fetchProjects(
-      searchQuery, 
-      1,
-      appliedFilterDeveloper,
-      appliedFilterArea,
-      appliedFilterPriceMin,
-      appliedFilterPriceMax
-    )
-  }
-
-  const applyFilters = () => {
-    // Update applied filters first
-    setAppliedFilterDeveloper(filterDeveloper)
-    setAppliedFilterArea(filterArea)
-    setAppliedFilterPriceMin(filterPriceMin)
-    setAppliedFilterPriceMax(filterPriceMax)
-    setCurrentPage(1)
-    // The useEffect will handle the fetch when applied filters change, but we need to trigger it manually
-    // to avoid double requests, we'll do it directly here
-    fetchProjects(
-      searchQuery,
-      1,
-      filterDeveloper,
-      filterArea,
-      filterPriceMin,
-      filterPriceMax
-    )
-  }
-
-  const clearFilters = () => {
-    setFilterDeveloper("all")
-    setFilterArea("all")
-    setFilterPriceMin("")
-    setFilterPriceMax("")
-    setAppliedFilterDeveloper("all")
-    setAppliedFilterArea("all")
-    setAppliedFilterPriceMin("")
-    setAppliedFilterPriceMax("")
-    setCurrentPage(1)
-    fetchProjects(
-      searchQuery,
-      1,
-      "all",
-      "all",
-      "",
-      ""
-    )
-  }
-
-  const hasActiveFilters = appliedFilterDeveloper !== "all" || appliedFilterArea !== "all" || appliedFilterPriceMin !== "" || appliedFilterPriceMax !== ""
-  const hasFilterChanges = filterDeveloper !== appliedFilterDeveloper || filterArea !== appliedFilterArea || filterPriceMin !== appliedFilterPriceMin || filterPriceMax !== appliedFilterPriceMax
+  }, [])
 
   const totalPages = Math.ceil(totalCount / itemsPerPage)
 
@@ -482,14 +438,7 @@ export default function ProjectsPage() {
         }
       )
 
-      await fetchProjects(
-        searchQuery, 
-        currentPage,
-        appliedFilterDeveloper,
-        appliedFilterArea,
-        appliedFilterPriceMin,
-        appliedFilterPriceMax
-      )
+      await fetchProjects(currentPage)
       toast.success("Project deleted successfully")
     } catch (err: unknown) {
       console.error("Error deleting project:", err)
@@ -1106,14 +1055,7 @@ export default function ProjectsPage() {
       setMediaToDelete([])
       setTravelTimes([])
       setTravelTimesToDelete([])
-      await fetchProjects(
-        searchQuery, 
-        currentPage,
-        appliedFilterDeveloper,
-        appliedFilterArea,
-        appliedFilterPriceMin,
-        appliedFilterPriceMax
-      )
+      await fetchProjects(currentPage)
       toast.success(editingProject ? "Project updated successfully" : "Project created successfully")
     } catch (err: unknown) {
       console.error("Error saving project:", err)
@@ -1203,146 +1145,14 @@ export default function ProjectsPage() {
             )}
           </div>
 
-          {/* Search Bar and Filter Button */}
+          {/* Unified Search/Filter/Sort Bar */}
           <div className="mb-4">
-            <div className="flex items-center gap-2 mb-4">
-              <SearchBar
-                value={searchQuery}
-                onChange={setSearchQuery}
-                onSearch={handleSearch}
-                placeholder="Search by slug..."
-              />
-              <ProjectsFilters
-                isMobile={isMobile}
-                isFilterOpen={isFilterOpen}
-                onFilterToggle={() => setIsFilterOpen(!isFilterOpen)}
-                onFilterOpenChange={setIsFilterOpen}
-                filterDeveloper={filterDeveloper}
-                filterArea={filterArea}
-                filterPriceMin={filterPriceMin}
-                filterPriceMax={filterPriceMax}
-                developers={developers}
-                areas={areas}
-                hasFilterChanges={hasFilterChanges}
-                hasActiveFilters={hasActiveFilters}
-                onDeveloperChange={setFilterDeveloper}
-                onAreaChange={setFilterArea}
-                onPriceMinChange={setFilterPriceMin}
-                onPriceMaxChange={setFilterPriceMax}
-                onApplyFilters={applyFilters}
-                onClearFilters={clearFilters}
-              />
-            </div>
-            {/* Filters displayed below search bar when open */}
-            {isFilterOpen && !isMobile && (
-              <div className="flex items-center gap-4 flex-wrap pb-4 border-b">
-                <div className="flex items-center gap-2">
-                  <FieldLabel htmlFor="filter-developer">Developer:</FieldLabel>
-                  <Select value={filterDeveloper} onValueChange={setFilterDeveloper}>
-                    <SelectTrigger id="filter-developer" className="w-[200px] cursor-pointer">
-                      <SelectValue placeholder="All Developers" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all" className="cursor-pointer">All Developers</SelectItem>
-                      {developers.map((dev) => (
-                        <SelectItem key={dev.id} value={dev.id.toString()} className="cursor-pointer">
-                          {dev.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <FieldLabel htmlFor="filter-area">Area:</FieldLabel>
-                  <Select value={filterArea} onValueChange={setFilterArea}>
-                    <SelectTrigger id="filter-area" className="w-[200px] cursor-pointer">
-                      <SelectValue placeholder="All Areas" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all" className="cursor-pointer">All Areas</SelectItem>
-                      {areas.map((area) => (
-                        <SelectItem key={area.id} value={area.id.toString()} className="cursor-pointer">
-                          {area.title} ({area.city})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <FieldLabel htmlFor="filter-price-min">Price Min:</FieldLabel>
-                  <Input
-                    id="filter-price-min"
-                    type="number"
-                    min="0"
-                    step="1"
-                    placeholder="Min"
-                    value={filterPriceMin}
-                    onChange={(e) => {
-                      const value = e.target.value
-                      // Allow empty string, or numbers that are non-negative
-                      if (value === '' || (!value.includes('-') && (value === '0' || (!isNaN(parseFloat(value)) && parseFloat(value) >= 0)))) {
-                        setFilterPriceMin(value)
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      // Prevent minus, plus, and 'e' keys
-                      if (e.key === '-' || e.key === '+' || e.key === 'e' || e.key === 'E') {
-                        e.preventDefault()
-                      }
-                    }}
-                    className="w-[120px] cursor-pointer"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <FieldLabel htmlFor="filter-price-max">Price Max:</FieldLabel>
-                  <Input
-                    id="filter-price-max"
-                    type="number"
-                    min="0"
-                    step="1"
-                    placeholder="Max"
-                    value={filterPriceMax}
-                    onChange={(e) => {
-                      const value = e.target.value
-                      // Allow empty string, or numbers that are non-negative
-                      if (value === '' || (!value.includes('-') && (value === '0' || (!isNaN(parseFloat(value)) && parseFloat(value) >= 0)))) {
-                        setFilterPriceMax(value)
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      // Prevent minus, plus, and 'e' keys
-                      if (e.key === '-' || e.key === '+' || e.key === 'e' || e.key === 'E') {
-                        e.preventDefault()
-                      }
-                    }}
-                    className="w-[120px] cursor-pointer"
-                  />
-                </div>
-
-                <Button
-                  onClick={applyFilters}
-                  className="cursor-pointer"
-                  disabled={!hasFilterChanges}
-                >
-                  Apply Filters
-                </Button>
-
-                {hasActiveFilters && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={clearFilters}
-                    className="cursor-pointer"
-                  >
-                    <X className="h-4 w-4 mr-2" />
-                    Clear Filters
-                  </Button>
-                )}
-              </div>
-            )}
+            <AdvancedSearchBar
+              columns={searchColumns}
+              value={searchQuery}
+              onChange={setSearchQuery}
+              onApply={handleSearchApply}
+            />
           </div>
 
           {error && (
