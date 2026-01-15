@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback } from "react"
 import { useParams } from "react-router-dom"
-import { useIsMobile } from "@/hooks/use-mobile"
 import { RoleBasedLayout } from "@/components/RoleBasedLayout"
 import axios from "axios"
 import {
@@ -79,7 +78,6 @@ const SLUG_TO_LISTING_TYPE: Record<string, PropertyListingType> = {
 export default function PropertiesPage() {
   const { type: typeSlug } = useParams<{ type: string }>()
   const listingType = typeSlug ? SLUG_TO_LISTING_TYPE[typeSlug] : undefined
-  const isMobile = useIsMobile()
   const { employee } = useAuth()
   
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
@@ -129,7 +127,7 @@ export default function PropertiesPage() {
       setError(null)
 
       const offset = (page - 1) * itemsPerPage
-      const parsed = parseQuery(searchQuery, searchColumns)
+      const parsed = parseQuery(searchQuery || "", searchColumns)
       
       // Skip incomplete filters
       const completeFilters = parsed.filters.filter(f => f.value && f.value.trim())
@@ -253,21 +251,11 @@ export default function PropertiesPage() {
     }
   }, [supabaseUrl, supabaseAnonKey])
 
-  // Reset filters and page when listing type changes
+  // Reset page when listing type changes
   useEffect(() => {
     if (listingType) {
       fetchProjects()
       setCurrentPage(1)
-      setAppliedFilterProject("all")
-      setAppliedFilterType("all")
-      setAppliedFilterBedrooms("all")
-      setAppliedFilterPriceMin("")
-      setAppliedFilterPriceMax("")
-      setFilterProject("all")
-      setFilterType("all")
-      setFilterBedrooms("all")
-      setFilterPriceMin("")
-      setFilterPriceMax("")
       setSearchQuery("")
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -277,51 +265,27 @@ export default function PropertiesPage() {
   useEffect(() => {
     if (!listingType) return
     
-    fetchProperties(searchQuery || undefined, currentPage)
+    // Debounced search
+    const timeoutId = setTimeout(() => {
+      setCurrentPage(1)
+      fetchProperties(1)
+    }, searchQuery.trim() ? 1500 : 0)
+
+    return () => clearTimeout(timeoutId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listingType, currentPage, searchQuery, appliedFilterProject, appliedFilterType, appliedFilterBedrooms, appliedFilterPriceMin, appliedFilterPriceMax]) // fetchProperties is stable, no need to include in deps
+  }, [listingType, searchQuery])
 
-  const handleSearch = useCallback(() => {
+  // Fetch when page changes
+  useEffect(() => {
+    if (!listingType) return
+    fetchProperties(currentPage)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage])
+
+  const handleSearchApply = useCallback((query: string) => {
+    setSearchQuery(query)
     setCurrentPage(1)
-    fetchProperties(searchQuery || undefined, 1)
-  }, [searchQuery, fetchProperties])
-
-  const applyFilters = () => {
-    setCurrentPage(1)
-    setAppliedFilterProject(filterProject)
-    setAppliedFilterType(filterType)
-    setAppliedFilterBedrooms(filterBedrooms)
-    setAppliedFilterPriceMin(filterPriceMin)
-    setAppliedFilterPriceMax(filterPriceMax)
-  }
-
-  const clearFilters = () => {
-    setFilterProject("all")
-    setFilterType("all")
-    setFilterBedrooms("all")
-    setFilterPriceMin("")
-    setFilterPriceMax("")
-    setAppliedFilterProject("all")
-    setAppliedFilterType("all")
-    setAppliedFilterBedrooms("all")
-    setAppliedFilterPriceMin("")
-    setAppliedFilterPriceMax("")
-    setCurrentPage(1)
-  }
-
-  const hasFilterChanges =
-    filterProject !== appliedFilterProject ||
-    filterType !== appliedFilterType ||
-    filterBedrooms !== appliedFilterBedrooms ||
-    filterPriceMin !== appliedFilterPriceMin ||
-    filterPriceMax !== appliedFilterPriceMax
-
-  const hasActiveFilters =
-    appliedFilterProject !== "all" ||
-    appliedFilterType !== "all" ||
-    appliedFilterBedrooms !== "all" ||
-    appliedFilterPriceMin !== "" ||
-    appliedFilterPriceMax !== ""
+  }, [])
 
   const totalPages = Math.ceil(totalCount / itemsPerPage)
 

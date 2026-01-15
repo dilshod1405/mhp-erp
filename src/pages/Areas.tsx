@@ -231,7 +231,7 @@ export default function AreasPage() {
         }
       )
 
-      await fetchAreas(currentPage, selectedCity)
+      await fetchAreas(currentPage)
       toast.success("Area deleted successfully")
     } catch (err: any) {
       console.error("Error deleting area:", err)
@@ -289,7 +289,7 @@ export default function AreasPage() {
 
       setIsDialogOpen(false)
       setIsAddDialogOpen(false)
-      await fetchAreas(currentPage, selectedCity)
+      await fetchAreas(currentPage)
       toast.success(editingArea ? "Area updated successfully" : "Area created successfully")
     } catch (err: any) {
       console.error("Error saving area:", err)

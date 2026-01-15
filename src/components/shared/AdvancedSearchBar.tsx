@@ -294,7 +294,6 @@ export function AdvancedSearchBar({
     
     // Find where the filter ends (next space or end of string)
     // First, find the current filter part
-    const textAfter = internalValue.substring(cursorPosition)
     const fullFilterPart = internalValue.substring(filterStart)
     const filterMatch = fullFilterPart.match(/^([^=:]+[=:])(.*?)(\s|$)/)
     

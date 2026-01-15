@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from "react"
-import { useIsMobile } from "@/hooks/use-mobile"
 import { useParams } from "react-router-dom"
 import { RoleBasedLayout } from "@/components/RoleBasedLayout"
 import axios from "axios"
@@ -37,7 +36,6 @@ import type { Area } from "@/types/area"
 export default function ProjectsPage() {
   const { type: typeSlug } = useParams<{ type: string }>()
   const projectType = typeSlug ? SLUG_TO_PROJECT_TYPE[typeSlug] : undefined
-  const isMobile = useIsMobile()
   
   const { employee } = useAuth()
   const [projects, setProjects] = useState<Project[]>([])
